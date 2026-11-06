@@ -23,6 +23,7 @@ import co.elastic.grammar.GrammarVersions;
 import co.elastic.plugin.annotator.SyntaxErrors.SyntaxError;
 import co.elastic.plugin.autocomplete.Completion;
 import co.elastic.plugin.autocomplete.CompletionTestAccess;
+import co.elastic.plugin.connection.EsqlSchemaProvider;
 import co.elastic.plugin.version.GrammarVersion;
 import co.elastic.plugin.version.Selection;
 import org.junit.Assert;
@@ -134,6 +135,31 @@ public class EsqlGrammarVersionsTest {
         Set<Completion> afterPipe = completions("FROM x | ");
         Assert.assertTrue(afterPipe.toString(), afterPipe.contains(new Completion("WHERE", Completion.Kind.KEYWORD)));
         Assert.assertTrue(afterPipe.toString(), afterPipe.contains(new Completion("LIMIT", Completion.Kind.KEYWORD)));
+    }
+
+    @Test
+    public void testFieldCompletionOffersSchemaFields() {
+        EsqlSchemaProvider schema = new EsqlSchemaProvider() {
+            @Override
+            public List<String> getIndices() {
+                return List.of("x");
+            }
+
+            @Override
+            public List<String> getFields(String indexName) {
+                return "x".equals(indexName) ? List.of("field1", "field2", "@timestamp") : List.of();
+            }
+        };
+        List<String> failures = new ArrayList<>();
+        for (String query : List.of("FROM x | KEEP ", "FROM x | WHERE ", "FROM x | SORT ")) {
+            Set<Completion> offered = CompletionTestAccess.computeCompletions(query, schema, selection());
+            for (String field : List.of("field1", "field2", "@timestamp")) {
+                if (offered.contains(new Completion(field, Completion.Kind.FIELD)) == false) {
+                    failures.add("\"" + query + "\" does not offer " + field);
+                }
+            }
+        }
+        Assert.assertTrue("Version " + version + ":\n" + String.join("\n", failures), failures.isEmpty());
     }
 
     @Test

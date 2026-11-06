@@ -27,6 +27,7 @@ import co.elastic.plugin.version.GrammarVersion;
 import co.elastic.plugin.version.Selection;
 import org.antlr.v4.runtime.Token;
 
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
@@ -48,8 +49,32 @@ public record Completion(String text, Kind kind) {
 
     // subquery is preferred because subqueries open with LP, which would otherwise be completed as the start
     // of a function call
-    private static final List<String> PREFERRED_RULES =
-        List.of("indexPattern", "fieldName", "fieldNamePattern", "metadataSource", "subquery");
+    // the field name rules are added per grammar, see fieldNameRule and fieldNamePatternRule
+    private static final List<String> PREFERRED_RULES = List.of("indexPattern", "metadataSource", "subquery");
+
+    /**
+     * The rule that holds a field name. 9.0 and 9.1 have no fieldName rule; their qualifiedName has the same
+     * body. From 9.2 on qualifiedName wraps fieldName, so it is used only when fieldName is missing.
+     */
+    private static int fieldNameRule(EsqlGrammar grammar) {
+        return ruleOrFallback(grammar, "fieldName", "qualifiedName");
+    }
+
+    /** Like {@link #fieldNameRule}, for field name patterns (qualifiedNamePattern in 9.0 and 9.1). */
+    private static int fieldNamePatternRule(EsqlGrammar grammar) {
+        return ruleOrFallback(grammar, "fieldNamePattern", "qualifiedNamePattern");
+    }
+
+    private static int ruleOrFallback(EsqlGrammar grammar, String rule, String fallback) {
+        int index = grammar.ruleIndex(rule);
+        return index >= 0 ? index : grammar.ruleIndex(fallback);
+    }
+
+    private static boolean isFieldRuleUsed(EsqlGrammar grammar, CandidatesCollection candidates,
+                                           int caretTokenIndex, List<Token> allTokens) {
+        return isRuleAlreadyUsed(candidates, fieldNameRule(grammar), caretTokenIndex, allTokens)
+            || isRuleAlreadyUsed(candidates, fieldNamePatternRule(grammar), caretTokenIndex, allTokens);
+    }
 
     /** The newest version with dev-only syntax off. Does not need a running IDE. */
     static Set<Completion> computeCompletions(String text, EsqlSchemaProvider queryManager) {
@@ -110,9 +135,7 @@ public record Completion(String text, Kind kind) {
             completions.add(new Completion("{string}", Kind.PLACEHOLDER));
         }
 
-        if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldName"), caretTokenIndex, allTokens)
-            || isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldNamePattern"), caretTokenIndex,
-            allTokens)) {
+        if (isFieldRuleUsed(grammar, candidates, caretTokenIndex, allTokens)) {
             completions.add(new Completion("{var}", Kind.PLACEHOLDER));
         }
 
@@ -194,9 +217,7 @@ public record Completion(String text, Kind kind) {
             }
         }
 
-        if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldName"), caretTokenIndex, allTokens)
-            || isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldNamePattern"), caretTokenIndex,
-            allTokens)) {
+        if (isFieldRuleUsed(grammar, candidates, caretTokenIndex, allTokens)) {
             var queriedIndexes = parserInfo.queriedIndexes();
             if (!queriedIndexes.isEmpty()) {
                 String index = queriedIndexes.getLast();
@@ -215,8 +236,13 @@ public record Completion(String text, Kind kind) {
         EsqlGrammar grammar = parserInfo.grammar();
 
         var codeCompletionCode = new CodeCompletionCore(parser);
+        List<Integer> preferred = new ArrayList<>();
         for (String rule : PREFERRED_RULES) {
-            int index = grammar.ruleIndex(rule);
+            preferred.add(grammar.ruleIndex(rule));
+        }
+        preferred.add(fieldNameRule(grammar));
+        preferred.add(fieldNamePatternRule(grammar));
+        for (int index : preferred) {
             // a version without the rule just gets no special handling for it
             if (index >= 0) {
                 codeCompletionCode.preferredRules.add(index);
