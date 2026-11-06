@@ -1,0 +1,5 @@
+_id
+_ignored
+_index
+_score
+_version

@@ -18,18 +18,22 @@
  */
 package co.elastic.plugin.documentation;
 
+import co.elastic.plugin.version.GrammarSelection;
+import co.elastic.plugin.version.VersionData;
 import com.intellij.lang.Language;
 import com.intellij.model.Pointer;
 import com.intellij.platform.backend.documentation.DocumentationResult;
 import com.intellij.platform.backend.documentation.DocumentationTarget;
 import com.intellij.platform.backend.documentation.DocumentationTargetProvider;
 import com.intellij.platform.backend.presentation.TargetPresentation;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.psi.PsiFile;
 import com.intellij.psi.PsiPlainText;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.List;
+import java.util.Locale;
 
 import static co.elastic.plugin.CommonUtils.ESQL_SEPARATORS;
 import static co.elastic.plugin.CommonUtils.checkEsqlCommentAbove;
@@ -109,8 +113,21 @@ public class EsqlDocumentationProvider implements DocumentationTargetProvider {
 
         @Override
         public @Nullable DocumentationResult computeDocumentation() {
+            String unavailable = notAvailableHtml(GrammarSelection.current().version().id(), word);
+            if (unavailable != null) {
+                return DocumentationResult.documentation(unavailable);
+            }
             return EsqlDocsMap.getDocforCommand(word);
         }
+    }
+
+    /** The documentation to show when a command or function is missing in a version, or null when it exists. */
+    static @Nullable String notAvailableHtml(String versionId, String word) {
+        if (VersionData.isAvailable(versionId, word)) {
+            return null;
+        }
+        return "<p>" + StringUtil.escapeXmlEntities(word.toUpperCase(Locale.ROOT))
+               + " is not available in ES|QL " + StringUtil.escapeXmlEntities(versionId) + ".</p>";
     }
 }
 

@@ -23,6 +23,7 @@ import co.elastic.plugin.EsqlIcon;
 import co.elastic.plugin.EsqlRunIcon;
 import co.elastic.plugin.version.GrammarSelection;
 import co.elastic.plugin.version.Selection;
+import co.elastic.plugin.version.VersionData;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
@@ -44,7 +45,6 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static co.elastic.plugin.CommonUtils.ESQL_SEPARATORS;
-import static co.elastic.plugin.CommonUtils.FUNCTIONS;
 import static co.elastic.plugin.CommonUtils.PROCESSING_COMMANDS;
 import static co.elastic.plugin.CommonUtils.SOURCE_COMMANDS;
 import static co.elastic.plugin.CommonUtils.findEsqlBlocksInPlainText;
@@ -115,7 +115,7 @@ public class EsqlAnnotator implements Annotator {
         List<String> allKeywords = new ArrayList<>();
         allKeywords.addAll(List.of(SOURCE_COMMANDS));
         allKeywords.addAll(List.of(PROCESSING_COMMANDS));
-        allKeywords.addAll(List.of(FUNCTIONS));
+        allKeywords.addAll(VersionData.functions(GrammarSelection.current().version().id()));
 
         for (String keyword : allKeywords) {
             if (text.contains(keyword)) {

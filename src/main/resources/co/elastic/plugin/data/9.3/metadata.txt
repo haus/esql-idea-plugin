@@ -1,0 +1,8 @@
+_id
+_ignored
+_index
+_index_mode
+_score
+_source
+_tier
+_version

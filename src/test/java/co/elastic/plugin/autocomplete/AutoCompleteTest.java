@@ -21,6 +21,7 @@ package co.elastic.plugin.autocomplete;
 import co.elastic.plugin.connection.EsqlSchemaProvider;
 import co.elastic.plugin.version.GrammarVersion;
 import co.elastic.plugin.version.Selection;
+import co.elastic.plugin.version.VersionData;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -28,8 +29,6 @@ import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static co.elastic.plugin.CommonUtils.FUNCTIONS;
-import static co.elastic.plugin.CommonUtils.METADATA_OPTIONS;
 
 
 public class AutoCompleteTest {
@@ -77,7 +76,7 @@ public class AutoCompleteTest {
         var completions = Completion.computeCompletions(query, null);
 
         Set<String> texts = completions.stream().map(Completion::text).collect(Collectors.toSet());
-        for (String opt : METADATA_OPTIONS) {
+        for (String opt : VersionData.metadataOptions("9.5")) {
             Assert.assertTrue("Missing metadata option: " + opt, texts.contains(opt));
         }
     }
@@ -161,9 +160,24 @@ public class AutoCompleteTest {
             .map(Completion::text)
             .collect(Collectors.toSet());
         Assert.assertFalse("Expected function completions", functionTexts.isEmpty());
-        for (String fn : FUNCTIONS) {
+        for (String fn : VersionData.functions("9.5")) {
             Assert.assertTrue("Missing function: " + fn, functionTexts.contains(fn + "()"));
         }
+    }
+
+    @Test
+    public void testFunctionsAndMetadataFollowTheSelectedVersion() {
+        var old = new Selection(new GrammarVersion("9.0", "9.0", false), false, null);
+        var newest = new Selection(new GrammarVersion("9.5", "9.5", false), false, null);
+        var oldFunctions = Completion.computeCompletions("FROM index | WHERE ", null, old);
+        var newFunctions = Completion.computeCompletions("FROM index | WHERE ", null, newest);
+        Assert.assertTrue(oldFunctions.contains(new Completion("ABS()", Completion.Kind.FUNCTION)));
+        Assert.assertFalse(oldFunctions.contains(new Completion("ST_GEOHASH()", Completion.Kind.FUNCTION)));
+        Assert.assertTrue(newFunctions.contains(new Completion("ST_GEOHASH()", Completion.Kind.FUNCTION)));
+
+        var oldMetadata = Completion.computeCompletions("FROM index METADATA ", null, old);
+        Assert.assertTrue(oldMetadata.contains(new Completion("_version", Completion.Kind.METADATA)));
+        Assert.assertFalse(oldMetadata.contains(new Completion("_source", Completion.Kind.METADATA)));
     }
 
     @Test

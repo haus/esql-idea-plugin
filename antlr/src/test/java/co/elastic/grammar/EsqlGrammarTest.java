@@ -112,4 +112,13 @@ public class EsqlGrammarTest {
         Assert.assertEquals("9.5", GrammarVersions.newest());
         Assert.assertEquals(released.getLast(), GrammarVersions.newest());
     }
+
+    @Test
+    public void testHasTokenLooksUpSymbolicNamesOfOneVersion() {
+        EsqlGrammar grammar = EsqlGrammar.forVersion("9.0");
+        Assert.assertTrue(grammar.hasToken("FROM"));
+        Assert.assertTrue(grammar.hasToken("PIPE"));
+        Assert.assertFalse(grammar.hasToken("NO_SUCH_TOKEN"));
+        Assert.assertFalse(grammar.hasToken(null));
+    }
 }

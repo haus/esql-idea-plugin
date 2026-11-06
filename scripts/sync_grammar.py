@@ -7,6 +7,7 @@ Standard library only. See README.md.
 """
 import argparse
 import io
+import json
 import re
 import shutil
 import subprocess
@@ -18,6 +19,16 @@ ANTLR_DIR = "x-pack/plugin/esql/src/main/antlr"
 TOP_LEVEL = ("EsqlBaseLexer.g4", "EsqlBaseParser.g4")
 SUBDIRS = ("lexer", "parser")
 REPO_ROOT = Path(__file__).resolve().parent.parent
+DOCS_DIR = "docs/reference/query-languages/esql"
+# Kibana JSON definitions (9.0 to 9.4); the generated markdown snippets (9.5 on) are under SNIPPETS_DIR.
+KIBANA_FUNCTIONS_DIR = DOCS_DIR + "/kibana/definition/functions"
+SNIPPETS_DIR = DOCS_DIR + "/_snippets/generated"
+# Functions are generated into <SNIPPETS_DIR>/x-pack-esql*/functions/ (a few land in a sibling package, such as
+# x-pack-esql-function-math for ABS). briefSummary/ has one file per function and none for operators.
+SNIPPETS_PACKAGE = "x-pack-esql"
+SNIPPETS_NAME_DIR = "briefSummary"
+FUNCTION_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+DATA_DIR = REPO_ROOT / "src" / "main" / "resources" / "co" / "elastic" / "plugin" / "data"
 
 LOCAL_CHANGES = """\
 Local changes to re-apply when syncing (scripts/sync_grammar.py does this):
@@ -156,6 +167,62 @@ def add_provenance(text, comment):
     return text[:split] + comment + text[split:]
 
 
+def kibana_function_names(files):
+    """Names from Kibana JSON definitions (path -> text), operators and unusable names left out. Sorted, upper case."""
+    names = set()
+    for path, text in files.items():
+        if not path.endswith(".json"):
+            continue
+        definition = json.loads(text)
+        name = definition.get("name", "")
+        if definition.get("type") != "operator" and FUNCTION_NAME.fullmatch(name):
+            names.add(name.upper())
+    return sorted(names)
+
+
+def markdown_function_names(paths, snippets_dir):
+    """Names from the file names under <snippets_dir>/x-pack-esql*/functions/briefSummary/."""
+    names = set()
+    for path in paths:
+        parts = path[len(snippets_dir) + 1:].split("/") if path.startswith(snippets_dir + "/") else []
+        if (len(parts) == 4 and parts[0].startswith(SNIPPETS_PACKAGE) and parts[1] == "functions"
+                and parts[2] == SNIPPETS_NAME_DIR and parts[3].endswith(".md")
+                and FUNCTION_NAME.fullmatch(parts[3][:-3])):
+            names.add(parts[3][:-3].upper())
+    return sorted(names)
+
+
+def render_functions(names):
+    return "".join(f"{name}\n" for name in sorted(set(names)))
+
+
+def read_function_names(es_repo, rev):
+    """Reads the function names of a revision, from Kibana JSON when it has them and else from the snippets."""
+    data = git(es_repo, "archive", rev, KIBANA_FUNCTIONS_DIR, binary=True) if git(
+        es_repo, "ls-tree", "--name-only", rev, KIBANA_FUNCTIONS_DIR + "/") else b""
+    files = {}
+    if data:
+        with tarfile.open(fileobj=io.BytesIO(data)) as tar:
+            for member in tar.getmembers():
+                if member.isfile():
+                    files[member.name] = tar.extractfile(member).read().decode("utf-8")
+    names = kibana_function_names(files)
+    if names:
+        return names
+    listing = git(es_repo, "ls-tree", "-r", "--name-only", rev, SNIPPETS_DIR + "/").splitlines()
+    return markdown_function_names(listing, SNIPPETS_DIR)
+
+
+def sync_functions(es_repo, version, rev):
+    names = read_function_names(es_repo, rev)
+    if not names:
+        raise SystemExit(f"No function definitions found for {rev} in {es_repo}")
+    out = DATA_DIR / version
+    out.mkdir(parents=True, exist_ok=True)
+    (out / "functions.txt").write_text(render_functions(names), encoding="utf-8")
+    print(f"Wrote {len(names)} functions to {out / 'functions.txt'} (ref {rev})")
+
+
 def check_version(version):
     if not re.fullmatch(r"\d+\.\d+", version):
         raise ValueError(f"Not a release version like 9.5: {version!r}")
@@ -236,10 +303,14 @@ def main(argv=None):
     parser.add_argument("--local", action="store_true", help="write antlr/local/ instead of a released version")
     parser.add_argument("--ref", help="with --local: git ref (branch, tag or commit) to take the grammar from")
     parser.add_argument("--worktree", action="store_true", help="with --local: use the checkout's working tree")
+    parser.add_argument("--functions", action="store_true",
+                        help="released version only: write its functions.txt instead of the grammar")
     parser.add_argument("version", nargs="?", help="released version such as 9.5")
     args = parser.parse_args(argv)
 
     if args.local:
+        if args.functions:
+            parser.error("--functions needs a released version")
         if args.version or args.commit:
             parser.error("--local takes --ref or --worktree, not a version or --commit")
         if bool(args.ref) == args.worktree:
@@ -253,6 +324,9 @@ def main(argv=None):
         except ValueError as e:
             parser.error(str(e))
         ref = f"{args.remote}/{args.version}"
+        if args.functions:
+            sync_functions(args.es_repo, args.version, args.commit or ref)
+            return
         sync(args.es_repo, REPO_ROOT / "antlr" / "grammars" / args.version, ref, args.commit or ref)
 
 

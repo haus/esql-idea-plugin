@@ -25,6 +25,7 @@ import co.elastic.grammar.completion.CodeCompletionCore.CandidatesCollection;
 import co.elastic.plugin.connection.EsqlSchemaProvider;
 import co.elastic.plugin.version.GrammarVersion;
 import co.elastic.plugin.version.Selection;
+import co.elastic.plugin.version.VersionData;
 import org.antlr.v4.runtime.Token;
 
 import java.util.ArrayList;
@@ -32,9 +33,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-
-import static co.elastic.plugin.CommonUtils.FUNCTIONS;
-import static co.elastic.plugin.CommonUtils.METADATA_OPTIONS;
 
 public record Completion(String text, Kind kind) {
     public enum Kind {
@@ -141,7 +139,7 @@ public record Completion(String text, Kind kind) {
 
         if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("metadataSource"), caretTokenIndex,
             allTokens)) {
-            for (String opt : METADATA_OPTIONS) {
+            for (String opt : VersionData.metadataOptions(grammar.id())) {
                 completions.add(new Completion(opt, Kind.METADATA));
             }
         }
@@ -174,7 +172,7 @@ public record Completion(String text, Kind kind) {
                     break;
                 // LP means functions, adding brackets to token
                 case "LP":
-                    for (String function : FUNCTIONS) {
+                    for (String function : VersionData.functions(grammar.id())) {
                         completions.add(new Completion(function + "()", Kind.FUNCTION));
                     }
                     break;

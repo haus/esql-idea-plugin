@@ -23,12 +23,15 @@ import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Parser;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.TokenStream;
+import org.antlr.v4.runtime.Vocabulary;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 
@@ -49,10 +52,11 @@ public final class EsqlGrammar {
     private final Constructor<? extends Parser> parserConstructor;
     private final Method singleStatement;
     private final Map<String, Integer> ruleIndexes;
+    private final Set<String> tokenNames;
 
     private EsqlGrammar(String id, Constructor<? extends Lexer> lexerConstructor,
                         Constructor<? extends Parser> parserConstructor, Method singleStatement,
-                        String[] ruleNames) {
+                        String[] ruleNames, Set<String> tokenNames) {
         this.id = id;
         this.lexerConstructor = lexerConstructor;
         this.parserConstructor = parserConstructor;
@@ -62,6 +66,7 @@ public final class EsqlGrammar {
             indexes.put(ruleNames[i], i);
         }
         this.ruleIndexes = Map.copyOf(indexes);
+        this.tokenNames = Set.copyOf(tokenNames);
     }
 
     /**
@@ -112,10 +117,23 @@ public final class EsqlGrammar {
             String[] ruleNames = (String[]) parserClass.getField("ruleNames").get(null);
             return new EsqlGrammar(id, lexerClass.getConstructor(CharStream.class),
                 parserClass.getConstructor(TokenStream.class), parserClass.getMethod("singleStatement"),
-                ruleNames);
+                ruleNames, symbolicNames(parserClass));
         } catch (ReflectiveOperationException | ClassCastException e) {
             throw new IllegalArgumentException("No usable ES|QL grammar for version " + id, e);
         }
+    }
+
+    private static Set<String> symbolicNames(Class<? extends Parser> parserClass)
+        throws ReflectiveOperationException {
+        Vocabulary vocabulary = (Vocabulary) parserClass.getField("VOCABULARY").get(null);
+        Set<String> names = new HashSet<>();
+        for (int type = 0; type <= vocabulary.getMaxTokenType(); type++) {
+            String name = vocabulary.getSymbolicName(type);
+            if (name != null) {
+                names.add(name);
+            }
+        }
+        return names;
     }
 
     public String id() {
@@ -153,6 +171,11 @@ public final class EsqlGrammar {
     /** The symbolic name of a token type (for example {@code PIPE}), or null when it has none. */
     public String tokenName(Parser parser, int tokenType) {
         return parser.getVocabulary().getSymbolicName(tokenType);
+    }
+
+    /** Whether this version's grammar has a token with this symbolic name (for example {@code FROM}). */
+    public boolean hasToken(String symbolicName) {
+        return symbolicName != null && tokenNames.contains(symbolicName);
     }
 
     private static <T> T newInstance(Constructor<T> constructor, Object arg) {

@@ -195,6 +195,40 @@ class RenderHeaderTest(unittest.TestCase):
         self.assertEqual("/*\n * license\n */\n// note\nparser grammar X;\n", out)
 
 
+class FunctionExtractorTest(unittest.TestCase):
+    def test_kibana_json_extractor_skips_operators(self):
+        files = {
+            "functions/abs.json": '{"type" : "scalar", "name" : "abs"}',
+            "functions/avg.json": '{"type" : "agg", "name" : "avg"}',
+            "functions/add.json": '{"type" : "operator", "name" : "+"}',
+            "functions/in.json": '{"type" : "operator", "name" : "in"}',
+            "functions/readme.md": "not json",
+        }
+        self.assertEqual(["ABS", "AVG"], sync_grammar.kibana_function_names(files))
+
+    def test_kibana_json_extractor_skips_unusable_names(self):
+        files = {"functions/x.json": '{"type" : "scalar", "name" : "a b"}'}
+        self.assertEqual([], sync_grammar.kibana_function_names(files))
+
+    def test_markdown_extractor_reads_names_from_file_names(self):
+        base = "docs/generated"
+        paths = [
+            base + "/x-pack-esql/functions/briefSummary/to_string.md",
+            # a function can be generated into a sibling package
+            base + "/x-pack-esql-function-math/functions/briefSummary/abs.md",
+            base + "/x-pack-esql/functions/description/abs.md",
+            base + "/x-pack-esql/functions/briefSummary/nested/other.md",
+            base + "/x-pack-esql/functions/briefSummary/notes.txt",
+            base + "/x-pack-esql/functions/briefSummary/bad-name.md",
+            base + "/x-pack-esql/commands/briefSummary/eval.md",
+            base + "/other/functions/briefSummary/foreign.md",
+        ]
+        self.assertEqual(["ABS", "TO_STRING"], sync_grammar.markdown_function_names(paths, base))
+
+    def test_function_file_is_one_upper_case_name_per_line(self):
+        self.assertEqual("ABS\nCOS\n", sync_grammar.render_functions(["COS", "ABS", "ABS"]))
+
+
 class VersionNameTest(unittest.TestCase):
     def test_only_minor_versions_are_accepted(self):
         sync_grammar.check_version("9.5")

@@ -83,6 +83,16 @@ applies to the grammar, the script stops and names the one that failed.
 
 To refresh every version, run the script once for each line of `scripts/grammar-versions.txt`.
 
+Function names are synced the same way, with `--functions`:
+
+```
+python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch --functions 9.6
+```
+
+This writes `src/main/resources/co/elastic/plugin/data/9.6/functions.txt` from the Kibana JSON definitions (9.0 to
+9.4) or the generated markdown snippets (9.5 on). The `metadata.txt` next to it is curated by hand from that
+branch's `esql-metadata-fields.md`, because Elasticsearch has no machine-readable list of metadata fields.
+
 ### Build with an unreleased grammar (`main`)
 
 To try grammar changes that are not released yet, generate the grammar into `antlr/local/` in your own clone:
