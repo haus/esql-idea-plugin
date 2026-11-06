@@ -22,6 +22,7 @@ import co.elastic.clients.elasticsearch.ElasticsearchClient;
 import co.elastic.clients.elasticsearch._types.ElasticsearchException;
 import co.elastic.clients.elasticsearch._types.mapping.TypeMapping;
 import co.elastic.plugin.CommonUtils;
+import co.elastic.plugin.EditorRefresh;
 import co.elastic.plugin.settings.EsqlConnection;
 import co.elastic.plugin.settings.EsqlPluginSettings;
 import co.elastic.plugin.version.ServerInfo;
@@ -33,6 +34,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
@@ -153,6 +155,9 @@ public final class EsqlPluginQueryManager implements EsqlSchemaProvider {
         if (state != null && state.task != null) {
             state.task.cancel(true);
         }
+        if (state != null) {
+            EditorRefresh.restartAll();
+        }
     }
 
     public void disconnectAll() {
@@ -165,10 +170,17 @@ public final class EsqlPluginQueryManager implements EsqlSchemaProvider {
         state.task = scheduler.scheduleWithFixedDelay(() -> {
             try (ElasticsearchClient client = CommonUtils.createClientInstance(conn.serverUrl,conn.apiKey)) {
 
+                ServerInfo info;
                 try {
-                    state.serverInfo = ServerInfos.fromInfo(client.info());
+                    info = ServerInfos.fromInfo(client.info());
                 } catch (Exception e) {
-                    state.serverInfo = null;
+                    info = null;
+                }
+                // Connected but the version is unknown: resolves to the newest with a "version unknown" note
+                info = info != null ? info : new ServerInfo(null, false);
+                if (!Objects.equals(info, state.serverInfo)) {
+                    state.serverInfo = info;
+                    EditorRefresh.restartAll();
                 }
 
                 List<String> indices = client.indices().get(g -> g.index("*"))

@@ -41,7 +41,7 @@ public class EsqlPluginSettings implements PersistentStateComponent<EsqlPluginSe
     /** One of auto, on, off. */
     public String devSyntax = "auto";
 
-    /** Grammar version id, or auto. Not used until version selection is added. */
+    /** Grammar version id (for example 9.3), local, or auto. */
     public String esqlVersion = "auto";
 
     @Override

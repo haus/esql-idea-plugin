@@ -45,6 +45,19 @@ By using the settings, the plugin can be connected to an Elasticsearch server in
 
 ![Screenshot](/readme-resources/connect.gif)
 
+## ES|QL version and Dev-only syntax settings
+
+Settings | Tools | ES|QL has two settings that apply to error highlighting, autocompletion and documentation:
+
+- **ES|QL version**: Auto, or one of 9.0 to 9.5. Auto uses the minor version of the connected server (a 9.3.4
+  server uses 9.3, an 8.x server uses 9.0 as an approximation, a newer server uses 9.5), and 9.5 when there is no
+  connection or the server's version cannot be read. A chosen version always wins over the server. The line under
+  the setting says which version is in use and why, including when it differs from the server's.
+- **Dev-only syntax**: Auto, On or Off. Whether syntax that Elasticsearch only accepts on snapshot builds (such as
+  `DEDUP`) is valid. Auto turns it on only when the connected server is a snapshot build.
+
+Open editors are re-checked when either setting changes, and when you connect or disconnect.
+
 ## Run queries
 
 Once connected to an Elasticsearch server instance, queries can be executed by clicking on the green `Run` button. Results will be displayed in the plugin's tool window.
@@ -106,7 +119,7 @@ python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch --local --worktr
 ```
 
 `--ref` accepts any branch, tag or commit. The build adds a "local" grammar version, which is never chosen
-automatically. `antlr/local/` is gitignored. Release tasks (`buildPlugin` and `publishPlugin`) fail while it
+automatically: pick "Local build (<ref> @ <commit>)" under Settings | Tools | ES|QL | ES|QL version. `antlr/local/` is gitignored. Release tasks (`buildPlugin` and `publishPlugin`) fail while it
 exists, to keep a local grammar out of a published plugin. To build a zip anyway, delete `antlr/local/` first, or run
 Gradle with `-x verifyNoLocalGrammar`. Delete the directory to go back to released grammars only.
 

@@ -32,18 +32,36 @@ public final class GrammarSelection {
     private static final List<GrammarVersion> RELEASED = GrammarVersions.released().stream()
         .map(id -> new GrammarVersion(id, id, false))
         .toList();
+    private static final GrammarVersion LOCAL = GrammarVersions.local()
+        .map(id -> new GrammarVersion(id, GrammarVersions.localLabel().orElse(id), true))
+        .orElse(null);
 
     private GrammarSelection() {}
 
+    /** Resolves the settings against the active connection. Not cached: call it each time it is needed. */
     public static Selection current() {
-        var app = ApplicationManager.getApplication();
-        EsqlPluginSettings settings = app.getService(EsqlPluginSettings.class);
-        EsqlPluginQueryManager manager = app.getService(EsqlPluginQueryManager.class);
-        return resolve(settings, manager == null ? null : manager.getActiveServerInfo());
+        EsqlPluginSettings settings = ApplicationManager.getApplication().getService(EsqlPluginSettings.class);
+        return resolve(settings, detectedServer());
+    }
+
+    /** The version detected on the active connection, or null when it is not connected. */
+    public static ServerInfo detectedServer() {
+        EsqlPluginQueryManager manager =
+            ApplicationManager.getApplication().getService(EsqlPluginQueryManager.class);
+        return manager == null ? null : manager.getActiveServerInfo();
     }
 
     public static Selection resolve(EsqlPluginSettings settings, ServerInfo detected) {
+        return resolve(settings, detected, LOCAL);
+    }
+
+    static Selection resolve(EsqlPluginSettings settings, ServerInfo detected, GrammarVersion local) {
         return VersionResolver.resolve(settings.esqlVersion, DevSyntaxMode.fromSetting(settings.devSyntax),
-            detected, RELEASED, null);
+            detected, RELEASED, local);
+    }
+
+    /** The local grammar of this build, or null when it has none. */
+    static GrammarVersion localVersion() {
+        return LOCAL;
     }
 }

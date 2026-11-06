@@ -18,6 +18,7 @@
  */
 package co.elastic.plugin.version;
 
+import co.elastic.grammar.GrammarVersions;
 import co.elastic.plugin.settings.EsqlPluginSettings;
 import org.junit.Assert;
 import org.junit.Test;
@@ -44,5 +45,71 @@ public class GrammarSelectionTest {
         EsqlPluginSettings s = new EsqlPluginSettings();
         s.devSyntax = "off";
         Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.5.0-SNAPSHOT", true)).devSyntax());
+    }
+
+    @Test
+    public void testResolveUsesSettingsAndDetectedServer() {
+        EsqlPluginSettings s = new EsqlPluginSettings();
+        s.esqlVersion = "auto";
+        Selection selection = GrammarSelection.resolve(s, new ServerInfo("9.2.1", false));
+        Assert.assertEquals("9.2", selection.version().id());
+    }
+
+    @Test
+    public void testResolveIsRecomputedPerCall() {
+        EsqlPluginSettings s = new EsqlPluginSettings();
+        Assert.assertEquals("9.1", GrammarSelection.resolve(s, new ServerInfo("9.1.0", false)).version().id());
+        Assert.assertEquals("9.4", GrammarSelection.resolve(s, new ServerInfo("9.4.2", false)).version().id());
+        Assert.assertEquals(GrammarVersions.newest(), GrammarSelection.resolve(s, null).version().id());
+        s.esqlVersion = "9.0";
+        Assert.assertEquals("9.0", GrammarSelection.resolve(s, new ServerInfo("9.4.2", false)).version().id());
+    }
+
+    @Test
+    public void testStaleSavedVersionFallsBack() {
+        EsqlPluginSettings s = new EsqlPluginSettings();
+        s.esqlVersion = "9.7";
+        Selection selection = GrammarSelection.resolve(s, null);
+        Assert.assertEquals(GrammarVersions.newest(), selection.version().id());
+        Assert.assertNotNull(selection.note());
+        Assert.assertTrue(selection.note(), selection.note().contains("9.7"));
+    }
+
+    @Test
+    public void testLocalSettingWithoutLocalGrammarFallsBack() {
+        EsqlPluginSettings s = new EsqlPluginSettings();
+        s.esqlVersion = "local";
+        Selection selection = GrammarSelection.resolve(s, null, null);
+        Assert.assertEquals(GrammarVersions.newest(), selection.version().id());
+        Assert.assertFalse(selection.version().local());
+        Assert.assertNotNull(selection.note());
+    }
+
+    @Test
+    public void testLocalSettingUsesLocalGrammar() {
+        EsqlPluginSettings s = new EsqlPluginSettings();
+        s.esqlVersion = "local";
+        GrammarVersion local = new GrammarVersion("local", "Local build (main @ 0123abcd)", true);
+        Assert.assertEquals(local, GrammarSelection.resolve(s, null, local).version());
+    }
+
+    @Test
+    public void testAutoNeverChoosesLocalGrammar() {
+        EsqlPluginSettings s = new EsqlPluginSettings();
+        GrammarVersion local = new GrammarVersion("local", "Local build (main @ 0123abcd)", true);
+        Assert.assertFalse(GrammarSelection.resolve(s, null, local).version().local());
+        Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.9.0", false), local).version().local());
+    }
+
+    @Test
+    public void testLocalVersionMatchesBuild() {
+        GrammarVersion local = GrammarSelection.localVersion();
+        if (GrammarVersions.local().isEmpty()) {
+            Assert.assertNull(local);
+        } else {
+            Assert.assertEquals(GrammarVersions.LOCAL_ID, local.id());
+            Assert.assertEquals(GrammarVersions.localLabel().orElseThrow(), local.label());
+            Assert.assertTrue(local.local());
+        }
     }
 }

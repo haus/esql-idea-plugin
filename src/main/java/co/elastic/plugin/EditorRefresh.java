@@ -19,14 +19,24 @@
 package co.elastic.plugin;
 
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer;
+import com.intellij.openapi.application.Application;
+import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
 
 public final class EditorRefresh {
     private EditorRefresh() {}
 
-    /** Re-runs highlighting in every open project, so setting changes show up straight away. */
+    /**
+     * Re-runs highlighting in every open project, so setting changes show up straight away. Can be called from
+     * any thread; off the event dispatch thread it runs later on it.
+     */
     public static void restartAll() {
+        Application app = ApplicationManager.getApplication();
+        if (!app.isDispatchThread()) {
+            app.invokeLater(EditorRefresh::restartAll);
+            return;
+        }
         for (Project project : ProjectManager.getInstance().getOpenProjects()) {
             if (!project.isDisposed()) {
                 DaemonCodeAnalyzer.getInstance(project).restart();
