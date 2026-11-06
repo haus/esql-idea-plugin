@@ -19,16 +19,14 @@
 package co.elastic.plugin.annotator;
 
 import co.elastic.grammar.EsqlGrammar;
+import co.elastic.plugin.annotator.SyntaxErrors.SyntaxError;
 import co.elastic.plugin.version.GrammarVersion;
 import co.elastic.plugin.version.Selection;
-import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Parser;
 import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
 import org.antlr.v4.runtime.tree.ErrorNode;
 import org.antlr.v4.runtime.tree.ParseTreeListener;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
@@ -47,33 +45,8 @@ public class EsqlGrammar95Tests {
 
     private static final EsqlGrammar GRAMMAR = EsqlGrammar.forVersion("9.5");
 
-    private record SyntaxError(int line, int charPositionInLine, String message) {
-        @Override
-        public String toString() {
-            return line + ":" + charPositionInLine + " " + message;
-        }
-    }
-
     private static List<SyntaxError> syntaxErrors(String query, boolean isDevVersion) {
-        List<SyntaxError> errors = new ArrayList<>();
-        BaseErrorListener collector = new BaseErrorListener() {
-            @Override
-            public void syntaxError(Recognizer<?, ?> recognizer, Object offendingSymbol, int line,
-                                    int charPositionInLine, String msg, RecognitionException e) {
-                errors.add(new SyntaxError(line, charPositionInLine, msg));
-            }
-        };
-
-        Lexer lexer = GRAMMAR.newLexer(CharStreams.fromString(query), isDevVersion);
-        lexer.removeErrorListeners();
-        lexer.addErrorListener(collector);
-
-        Parser parser = GRAMMAR.newParser(new CommonTokenStream(lexer), isDevVersion);
-        parser.removeErrorListeners();
-        parser.addErrorListener(collector);
-        parser.setBuildParseTree(false);
-        GRAMMAR.singleStatement(parser);
-        return errors;
+        return SyntaxErrors.of(GRAMMAR, query, isDevVersion);
     }
 
     private static void assertParses(List<String> queries, boolean isDevVersion) {
