@@ -9,8 +9,9 @@
 //   last commit touching the grammar: f65bf4192900 (2026-10-21)
 // Local changes to re-apply when syncing (scripts/sync_grammar.py does this):
 //   - EsqlBaseParser.g4: `metadata` uses a separate `metadataSource` rule (needed by autocomplete)
-//   - EsqlBaseParser.g4, lexer/From.g4: EsqlCapabilities.Cap.EXTERNAL_COMMAND.isEnabled() is replaced
-//     by this.isDevVersion(), and the EsqlCapabilities import is dropped
+//   - predicates the plugin cannot evaluate (feature flags, EsqlCapabilities checks) call
+//     this.isDevVersion() instead, and the EsqlCapabilities import is dropped:
+//       EsqlBaseParser.g4, lexer/From.g4: EsqlCapabilities.Cap.EXTERNAL_COMMAND.isEnabled()
 //   - EsqlBaseLexer.g4, EsqlBaseParser.g4: @header imports co.elastic.grammar.LexerConfig / ParserConfig
 //   - LexerConfig.java: rewindToTokenStart() copied from ES (used by lexer/InExpression.g4)
 parser grammar EsqlBaseParser;

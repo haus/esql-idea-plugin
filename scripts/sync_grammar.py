@@ -22,13 +22,24 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 LOCAL_CHANGES = """\
 Local changes to re-apply when syncing (scripts/sync_grammar.py does this):
   - EsqlBaseParser.g4: `metadata` uses a separate `metadataSource` rule (needed by autocomplete)
-  - EsqlBaseParser.g4, lexer/From.g4: EsqlCapabilities.Cap.EXTERNAL_COMMAND.isEnabled() is replaced
-    by this.isDevVersion(), and the EsqlCapabilities import is dropped
+  - predicates the plugin cannot evaluate (feature flags, EsqlCapabilities checks) call
+    this.isDevVersion() instead, and the EsqlCapabilities import is dropped:"""
+LOCAL_CHANGES_END = """\
   - EsqlBaseLexer.g4, EsqlBaseParser.g4: @header imports co.elastic.grammar.LexerConfig / ParserConfig
   - LexerConfig.java: rewindToTokenStart() copied from ES (used by lexer/InExpression.g4)"""
 
-CAPABILITIES_IMPORT = "import org.elasticsearch.xpack.esql.action.EsqlCapabilities;\n"
-EXTERNAL_CHECK = "{EsqlCapabilities.Cap.EXTERNAL_COMMAND.isEnabled()}?"
+CAPABILITIES_IMPORT = re.compile(r"^[ \t]*import\s+[\w.]*\bEsqlCapabilities\s*;[ \t]*\n", re.MULTILINE)
+PREDICATE = re.compile(r"\{([^{}]*)\}\?")
+# Calls in a predicate that the plugin cannot evaluate: feature flag methods and capability checks.
+UNSUPPORTED_CALL = re.compile(
+    r"\bthis\.(?!isDevVersion\b)is\w+Enabled\s*\(\s*\)"
+    r"|(?:\b[\w.]*\.)?\bEsqlCapabilities\.Cap\.\w+\.isEnabled\s*\(\s*\)"
+)
+METHOD_CALL = re.compile(r"(\w+)\s*\(")
+# Methods a predicate may call, by the config class the generated lexer or parser extends.
+LEXER_METHODS = frozenset({"isDevVersion", "isPromqlQuery"})
+PARSER_METHODS = frozenset({"isDevVersion"})
+DEV_CHECK = "this.isDevVersion()"
 METADATA_RULE = re.compile(
     r"^metadata\n(\s*):\s*METADATA UNQUOTED_SOURCE \(COMMA UNQUOTED_SOURCE\)\*\n", re.MULTILINE
 )
@@ -54,8 +65,50 @@ def _split_metadata(parser):
     )
 
 
+def _predicate_calls(text, pattern):
+    for predicate in PREDICATE.finditer(text):
+        for call in pattern.finditer(predicate.group(1)):
+            yield call
+
+
+def unsupported_predicates(files):
+    """Maps each predicate call the plugin cannot evaluate to the sorted files it appears in."""
+    found = {}
+    for name, text in files.items():
+        for call in _predicate_calls(text, UNSUPPORTED_CALL):
+            found.setdefault(re.sub(r"\s+", "", call.group(0)), set()).add(name)
+    return {call: sorted(names) for call, names in sorted(found.items())}
+
+
+def _replace_unsupported_predicates(text):
+    return PREDICATE.sub(lambda m: "{" + UNSUPPORTED_CALL.sub(DEV_CHECK, m.group(1)) + "}?", text)
+
+
+def _allowed_methods(name):
+    if name == "EsqlBaseLexer.g4" or name.startswith("lexer/"):
+        return LEXER_METHODS
+    if name == "EsqlBaseParser.g4" or name.startswith("parser/"):
+        return PARSER_METHODS
+    return frozenset()
+
+
+def _check_no_unsupported_left(files):
+    """Fails on anything the generated code could not compile against LexerConfig / ParserConfig."""
+    for name, text in sorted(files.items()):
+        if "EsqlCapabilities" in text:
+            line = next(line.strip() for line in text.splitlines() if "EsqlCapabilities" in line)
+            raise AdjustmentError("unsupported predicates", f"{name} still references EsqlCapabilities: {line}")
+        allowed = _allowed_methods(name)
+        for predicate in PREDICATE.finditer(text):
+            for call in METHOD_CALL.finditer(predicate.group(1)):
+                if call.group(1) not in allowed:
+                    raise AdjustmentError(
+                        "unsupported predicates",
+                        f"{name} has a predicate the plugin cannot evaluate: {predicate.group(0)}",
+                    )
+
+
 def _add_header_import(text, name, class_name):
-    text = text.replace(CAPABILITIES_IMPORT, "")
     match = HEADER_START.search(text)
     end = text.find("\n}", match.end()) if match else -1
     if end < 0:
@@ -65,22 +118,30 @@ def _add_header_import(text, name, class_name):
 
 def apply_local_adjustments(files):
     """files maps a path relative to the antlr directory to its text. Returns adjusted copies."""
-    out = {name: text.replace(EXTERNAL_CHECK, "{this.isDevVersion()}?").replace(CAPABILITIES_IMPORT, "")
+    out = {name: CAPABILITIES_IMPORT.sub("", _replace_unsupported_predicates(text))
            for name, text in files.items()}
     for name, config in (("EsqlBaseLexer.g4", "LexerConfig"), ("EsqlBaseParser.g4", "ParserConfig")):
         if name not in out:
             raise AdjustmentError(config + " import", f"{name} is missing")
         out[name] = _add_header_import(out[name], config + " import", config)
     out["EsqlBaseParser.g4"] = _split_metadata(out["EsqlBaseParser.g4"])
+    _check_no_unsupported_left(out)
     return out
 
 
-def provenance_comment(ref, commit, date, grammar_commit, grammar_date):
-    lines = [
-        "Synced from elastic/elasticsearch, x-pack/plugin/esql/src/main/antlr",
-        f"  ref: {ref} @ {commit} ({date})",
-        f"  last commit touching the grammar: {grammar_commit} ({grammar_date})",
-    ] + LOCAL_CHANGES.splitlines()
+def provenance_comment(ref, commit, date, grammar_commit, grammar_date, replaced=None):
+    """replaced is what unsupported_predicates returned for the grammar."""
+    replaced_lines = [f"      {', '.join(names)}: {call}" for call, names in (replaced or {}).items()]
+    lines = (
+        [
+            "Synced from elastic/elasticsearch, x-pack/plugin/esql/src/main/antlr",
+            f"  ref: {ref} @ {commit} ({date})",
+            f"  last commit touching the grammar: {grammar_commit} ({grammar_date})",
+        ]
+        + LOCAL_CHANGES.splitlines()
+        + (replaced_lines or ["      (none in this version)"])
+        + LOCAL_CHANGES_END.splitlines()
+    )
     return "".join(f"// {line}\n" for line in lines)
 
 
@@ -158,8 +219,9 @@ def sync(es_repo, out_dir, ref, rev=None, worktree=False):
     if not files:
         raise SystemExit(f"No grammar files found under {ANTLR_DIR} in {es_repo}")
     commit, date, grammar_commit, grammar_date = commit_info(es_repo, "HEAD" if worktree else rev)
+    replaced = unsupported_predicates(files)
     files = apply_local_adjustments(files)
-    comment = provenance_comment(ref, commit, date, grammar_commit, grammar_date)
+    comment = provenance_comment(ref, commit, date, grammar_commit, grammar_date, replaced)
     for name in TOP_LEVEL:
         files[name] = add_provenance(files[name], comment)
     write_output(out_dir, files, ref, commit, date)
