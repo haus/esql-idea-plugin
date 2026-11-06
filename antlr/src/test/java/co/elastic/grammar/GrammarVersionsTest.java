@@ -28,8 +28,8 @@ import java.util.Optional;
 public class GrammarVersionsTest {
 
     @Test
-    public void testReleasedListsNineFive() {
-        Assert.assertEquals(List.of("9.5"), GrammarVersions.released());
+    public void testReleasedListsNineZeroToNineFive() {
+        Assert.assertEquals(List.of("9.0", "9.1", "9.2", "9.3", "9.4", "9.5"), GrammarVersions.released());
     }
 
     @Test
