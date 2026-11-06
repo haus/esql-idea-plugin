@@ -24,6 +24,8 @@ import co.elastic.clients.elasticsearch._types.mapping.TypeMapping;
 import co.elastic.plugin.CommonUtils;
 import co.elastic.plugin.settings.EsqlConnection;
 import co.elastic.plugin.settings.EsqlPluginSettings;
+import co.elastic.plugin.version.ServerInfo;
+import co.elastic.plugin.version.ServerInfos;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
@@ -41,6 +43,7 @@ public final class EsqlPluginQueryManager implements EsqlSchemaProvider {
 
     private static class ConnectionState {
         ScheduledFuture<?> task;
+        volatile ServerInfo serverInfo;
         final ConcurrentHashMap<String, List<String>> indicesAndFields = new ConcurrentHashMap<>();
     }
 
@@ -76,6 +79,11 @@ public final class EsqlPluginQueryManager implements EsqlSchemaProvider {
         }
         List<String> result = state.indicesAndFields.get(indexName);
         return result != null ? result : new ArrayList<>();
+    }
+
+    public ServerInfo getActiveServerInfo() {
+        ConnectionState state = activeConnections.get(settings.activeConnectionName);
+        return state != null ? state.serverInfo : null;
     }
 
     public void addCachedResult(String query, EsqlQueryResult result, long elapsedMs) {
@@ -156,6 +164,12 @@ public final class EsqlPluginQueryManager implements EsqlSchemaProvider {
     private void startQueryThreadPool(String connectionName, EsqlConnection conn, ConnectionState state) {
         state.task = scheduler.scheduleWithFixedDelay(() -> {
             try (ElasticsearchClient client = CommonUtils.createClientInstance(conn.serverUrl,conn.apiKey)) {
+
+                try {
+                    state.serverInfo = ServerInfos.fromInfo(client.info());
+                } catch (Exception e) {
+                    state.serverInfo = null;
+                }
 
                 List<String> indices = client.indices().get(g -> g.index("*"))
                     .indices().keySet().stream()
