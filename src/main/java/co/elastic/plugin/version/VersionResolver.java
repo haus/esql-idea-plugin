@@ -57,6 +57,10 @@ public final class VersionResolver {
         if (detected == null) {
             return new Selection(newest, dev, "no connection, using " + newest.id());
         }
+        // serverless runs ES|QL newer than any release, whatever version number it reports
+        if (detected.serverless()) {
+            return new Selection(newest, dev, "serverless, using " + newest.id());
+        }
         String number = detected.number();
         Matcher m = number == null ? null : VERSION.matcher(number.trim());
         if (m == null || !m.matches()) {

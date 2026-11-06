@@ -20,19 +20,46 @@ package co.elastic.plugin.version;
 
 import co.elastic.clients.elasticsearch.core.InfoResponse;
 
+import java.util.Objects;
+
 public final class ServerInfos {
 
     private ServerInfos() {
     }
 
+    /** The build flavor of Elasticsearch serverless projects. */
+    static final String SERVERLESS_FLAVOR = "serverless";
+
     /**
-     * Reads the server version and snapshot flag from an info response.
+     * Reads the server version, snapshot flag and serverless build flavor from an info response.
      * Returns null when the response or its version is missing.
      */
     public static ServerInfo fromInfo(InfoResponse response) {
         if (response == null || response.version() == null) {
             return null;
         }
-        return new ServerInfo(response.version().number(), response.version().buildSnapshot());
+        var version = response.version();
+        return new ServerInfo(version.number(), version.buildSnapshot(),
+            SERVERLESS_FLAVOR.equals(version.buildFlavor()));
+    }
+
+    /** Connected, but the version is not known: resolves to the newest with a "version unknown" note. */
+    public static final ServerInfo UNKNOWN = new ServerInfo(null, false, false);
+
+    /**
+     * The server info to keep after a refresh. {@code detected} is null when the refresh could not read the
+     * version; a version known from an earlier refresh is then kept, so a transient failure does not change
+     * the grammar. Without one the result is {@link #UNKNOWN}.
+     */
+    public static ServerInfo next(ServerInfo previous, ServerInfo detected) {
+        if (detected != null) {
+            return detected;
+        }
+        return previous != null && previous.number() != null ? previous : UNKNOWN;
+    }
+
+    /** Whether editors must be refreshed because the server info changed. */
+    public static boolean needsRestart(ServerInfo previous, ServerInfo next) {
+        return !Objects.equals(previous, next);
     }
 }

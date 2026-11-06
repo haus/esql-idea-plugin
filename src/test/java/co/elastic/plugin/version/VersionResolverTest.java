@@ -43,28 +43,44 @@ public class VersionResolverTest {
 
     @Test
     public void testAutoUsesSameMinorOfDetectedVersion() {
-        Selection s = auto(new ServerInfo("9.3.4", false));
+        Selection s = auto(new ServerInfo("9.3.4", false, false));
         Assert.assertEquals("9.3", s.version().id());
         Assert.assertTrue(s.note().contains("9.3.4"));
     }
 
     @Test
     public void testSpecificVersionWinsAndMismatchIsExplained() {
-        Selection s = VersionResolver.resolve("9.3", DevSyntaxMode.AUTO, new ServerInfo("9.4.1", false), RELEASED, null);
+        Selection s = VersionResolver.resolve("9.3", DevSyntaxMode.AUTO, new ServerInfo("9.4.1", false, false), RELEASED, null);
         Assert.assertEquals("9.3", s.version().id());
         Assert.assertTrue(s.note().contains("9.4.1"));
     }
 
     @Test
     public void testOlderThanNineUsesNineZeroWithApproximateNote() {
-        Selection s = auto(new ServerInfo("8.19.0", false));
+        Selection s = auto(new ServerInfo("8.19.0", false, false));
         Assert.assertEquals("9.0", s.version().id());
         Assert.assertTrue(s.note().contains("approximate"));
     }
 
     @Test
     public void testNewerThanNewestUsesNewest() {
-        Assert.assertEquals("9.5", auto(new ServerInfo("9.9.0", false)).version().id());
+        Assert.assertEquals("9.5", auto(new ServerInfo("9.9.0", false, false)).version().id());
+    }
+
+    @Test
+    public void testAutoOnServerlessUsesNewestWhateverNumberItReports() {
+        for (String number : new String[] {"8.11.0", "9.4.0", "9.5.0", null}) {
+            Selection s = auto(new ServerInfo(number, false, true));
+            Assert.assertEquals("9.5", s.version().id());
+            Assert.assertEquals("serverless, using 9.5", s.note());
+        }
+    }
+
+    @Test
+    public void testSpecificVersionWinsOnServerless() {
+        Selection s = VersionResolver.resolve("9.3", DevSyntaxMode.AUTO, new ServerInfo("9.4.0", false, true),
+                RELEASED, null);
+        Assert.assertEquals("9.3", s.version().id());
     }
 
     @Test
@@ -77,7 +93,7 @@ public class VersionResolverTest {
     @Test
     public void testUnparseableVersionUsesUnknownNote() {
         for (String number : new String[] {"abc", "", null}) {
-            Selection s = auto(new ServerInfo(number, false));
+            Selection s = auto(new ServerInfo(number, false, false));
             Assert.assertEquals("9.5", s.version().id());
             Assert.assertEquals("version unknown, using 9.5", s.note());
         }
@@ -85,8 +101,8 @@ public class VersionResolverTest {
 
     @Test
     public void testSnapshotAndPrereleaseSuffixesAreIgnored() {
-        Assert.assertEquals("9.4", auto(new ServerInfo("9.4.0-rc1", false)).version().id());
-        Assert.assertEquals("9.5", auto(new ServerInfo("9.6.0-SNAPSHOT", true)).version().id());
+        Assert.assertEquals("9.4", auto(new ServerInfo("9.4.0-rc1", false, false)).version().id());
+        Assert.assertEquals("9.5", auto(new ServerInfo("9.6.0-SNAPSHOT", true, false)).version().id());
     }
 
     @Test
@@ -99,7 +115,7 @@ public class VersionResolverTest {
     @Test
     public void testLocalBuildNeverChosenByAuto() {
         Selection s = VersionResolver.resolve(VersionResolver.AUTO, DevSyntaxMode.AUTO,
-                new ServerInfo("9.6.0-SNAPSHOT", true), RELEASED, LOCAL);
+                new ServerInfo("9.6.0-SNAPSHOT", true, false), RELEASED, LOCAL);
         Assert.assertFalse(s.version().local());
     }
 
@@ -123,15 +139,15 @@ public class VersionResolverTest {
 
     @Test
     public void testDevSyntaxAuto() {
-        Assert.assertTrue(dev(DevSyntaxMode.AUTO, new ServerInfo("9.6.0-SNAPSHOT", true)));
-        Assert.assertFalse(dev(DevSyntaxMode.AUTO, new ServerInfo("9.5.0", false)));
+        Assert.assertTrue(dev(DevSyntaxMode.AUTO, new ServerInfo("9.6.0-SNAPSHOT", true, false)));
+        Assert.assertFalse(dev(DevSyntaxMode.AUTO, new ServerInfo("9.5.0", false, false)));
         Assert.assertFalse(dev(DevSyntaxMode.AUTO, null));
     }
 
     @Test
     public void testDevSyntaxOnOffAlwaysWin() {
         ServerInfo[] all = {
-            null, new ServerInfo("9.6.0-SNAPSHOT", true), new ServerInfo("9.5.0", false), new ServerInfo("abc", false)
+            null, new ServerInfo("9.6.0-SNAPSHOT", true, false), new ServerInfo("9.5.0", false, false), new ServerInfo("abc", false, false)
         };
         for (ServerInfo info : all) {
             Assert.assertTrue(dev(DevSyntaxMode.ON, info));

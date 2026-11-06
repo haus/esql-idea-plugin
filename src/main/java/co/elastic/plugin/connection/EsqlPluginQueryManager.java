@@ -28,13 +28,13 @@ import co.elastic.plugin.settings.EsqlPluginSettings;
 import co.elastic.plugin.version.ServerInfo;
 import co.elastic.plugin.version.ServerInfos;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.util.concurrency.AppExecutorUtil;
 
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ScheduledExecutorService;
@@ -42,6 +42,8 @@ import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
 public final class EsqlPluginQueryManager implements EsqlSchemaProvider {
+
+    private static final Logger LOG = Logger.getInstance(EsqlPluginQueryManager.class);
 
     private static class ConnectionState {
         ScheduledFuture<?> task;
@@ -174,11 +176,13 @@ public final class EsqlPluginQueryManager implements EsqlSchemaProvider {
                 try {
                     info = ServerInfos.fromInfo(client.info());
                 } catch (Exception e) {
+                    LOG.warn("Could not read the Elasticsearch version of " + connectionName, e);
                     info = null;
                 }
-                // Connected but the version is unknown: resolves to the newest with a "version unknown" note
-                info = info != null ? info : new ServerInfo(null, false);
-                if (!Objects.equals(info, state.serverInfo)) {
+                // keeps a version known from an earlier refresh when this one failed
+                ServerInfo previous = state.serverInfo;
+                info = ServerInfos.next(previous, info);
+                if (ServerInfos.needsRestart(previous, info)) {
                     state.serverInfo = info;
                     EditorRefresh.restartAll();
                 }

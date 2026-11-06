@@ -18,4 +18,8 @@
  */
 package co.elastic.plugin.version;
 
-public record ServerInfo(String number, boolean snapshot) {}
+/**
+ * What the server reports in {@code GET /}: its version number, whether it is a snapshot build, and whether
+ * its build flavor is "serverless".
+ */
+public record ServerInfo(String number, boolean snapshot, boolean serverless) {}

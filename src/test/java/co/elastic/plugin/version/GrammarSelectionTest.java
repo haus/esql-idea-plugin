@@ -36,33 +36,33 @@ public class GrammarSelectionTest {
     public void testAutoFollowsSnapshotFlag() {
         EsqlPluginSettings s = new EsqlPluginSettings();
         Assert.assertFalse(GrammarSelection.resolve(s, null).devSyntax());
-        Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.5.0", false)).devSyntax());
-        Assert.assertTrue(GrammarSelection.resolve(s, new ServerInfo("9.5.0-SNAPSHOT", true)).devSyntax());
+        Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.5.0", false, false)).devSyntax());
+        Assert.assertTrue(GrammarSelection.resolve(s, new ServerInfo("9.5.0-SNAPSHOT", true, false)).devSyntax());
     }
 
     @Test
     public void testOffIgnoresSnapshot() {
         EsqlPluginSettings s = new EsqlPluginSettings();
         s.devSyntax = "off";
-        Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.5.0-SNAPSHOT", true)).devSyntax());
+        Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.5.0-SNAPSHOT", true, false)).devSyntax());
     }
 
     @Test
     public void testResolveUsesSettingsAndDetectedServer() {
         EsqlPluginSettings s = new EsqlPluginSettings();
         s.esqlVersion = "auto";
-        Selection selection = GrammarSelection.resolve(s, new ServerInfo("9.2.1", false));
+        Selection selection = GrammarSelection.resolve(s, new ServerInfo("9.2.1", false, false));
         Assert.assertEquals("9.2", selection.version().id());
     }
 
     @Test
     public void testResolveIsRecomputedPerCall() {
         EsqlPluginSettings s = new EsqlPluginSettings();
-        Assert.assertEquals("9.1", GrammarSelection.resolve(s, new ServerInfo("9.1.0", false)).version().id());
-        Assert.assertEquals("9.4", GrammarSelection.resolve(s, new ServerInfo("9.4.2", false)).version().id());
+        Assert.assertEquals("9.1", GrammarSelection.resolve(s, new ServerInfo("9.1.0", false, false)).version().id());
+        Assert.assertEquals("9.4", GrammarSelection.resolve(s, new ServerInfo("9.4.2", false, false)).version().id());
         Assert.assertEquals(GrammarVersions.newest(), GrammarSelection.resolve(s, null).version().id());
         s.esqlVersion = "9.0";
-        Assert.assertEquals("9.0", GrammarSelection.resolve(s, new ServerInfo("9.4.2", false)).version().id());
+        Assert.assertEquals("9.0", GrammarSelection.resolve(s, new ServerInfo("9.4.2", false, false)).version().id());
     }
 
     @Test
@@ -98,7 +98,7 @@ public class GrammarSelectionTest {
         EsqlPluginSettings s = new EsqlPluginSettings();
         GrammarVersion local = new GrammarVersion("local", "Local build (main @ 0123abcd)", true);
         Assert.assertFalse(GrammarSelection.resolve(s, null, local).version().local());
-        Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.9.0", false), local).version().local());
+        Assert.assertFalse(GrammarSelection.resolve(s, new ServerInfo("9.9.0", false, false), local).version().local());
     }
 
     @Test
@@ -116,7 +116,7 @@ public class GrammarSelectionTest {
     @Test
     public void testHandEditedSettingIsNormalised() {
         EsqlPluginSettings s = new EsqlPluginSettings();
-        ServerInfo server = new ServerInfo("9.2.1", false);
+        ServerInfo server = new ServerInfo("9.2.1", false, false);
         s.esqlVersion = "Auto";
         Assert.assertEquals("9.2", GrammarSelection.resolve(s, server).version().id());
         s.esqlVersion = " 9.3 ";
