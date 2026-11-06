@@ -43,10 +43,10 @@ public class GrammarFallbackTest {
 
     @Test
     public void testFallbackWhenGrammarCannotBeLoaded() {
-        EsqlGrammar grammar = fallback.grammarFor("9.7");
+        EsqlGrammar grammar = fallback.grammarFor("0.0");
         Assert.assertEquals(GrammarVersions.newest(), grammar.id());
         Assert.assertEquals(1, reports.size());
-        Assert.assertEquals("9.7", reports.getFirst().id());
+        Assert.assertEquals("0.0", reports.getFirst().id());
         Assert.assertEquals(GrammarVersions.newest(), reports.getFirst().newest());
         Assert.assertNotNull(reports.getFirst().cause());
     }
@@ -54,12 +54,12 @@ public class GrammarFallbackTest {
     @Test
     public void testEachMissingVersionIsReportedOnce() {
         for (int i = 0; i < 5; i++) {
-            Assert.assertEquals(GrammarVersions.newest(), fallback.grammarFor("9.7").id());
+            Assert.assertEquals(GrammarVersions.newest(), fallback.grammarFor("0.0").id());
         }
         Assert.assertEquals(1, reports.size());
-        fallback.grammarFor("8.19");
-        fallback.grammarFor("8.19");
-        Assert.assertEquals(List.of("9.7", "8.19"), reports.stream().map(Report::id).toList());
+        fallback.grammarFor("0.1");
+        fallback.grammarFor("0.1");
+        Assert.assertEquals(List.of("0.0", "0.1"), reports.stream().map(Report::id).toList());
     }
 
     @Test

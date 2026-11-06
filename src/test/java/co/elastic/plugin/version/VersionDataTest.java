@@ -18,6 +18,7 @@
  */
 package co.elastic.plugin.version;
 
+import co.elastic.grammar.GrammarVersions;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -166,6 +167,17 @@ public class VersionDataTest {
     public void testFunctionNamesAreUpperCase() {
         for (String name : VersionData.functions("9.3")) {
             Assert.assertEquals(name.toUpperCase(), name);
+        }
+    }
+
+    /** A version added to the grammars must come with its data files, or selecting it fails at runtime. */
+    @Test
+    public void testEveryReleasedVersionHasFunctionsAndMetadata() {
+        for (String id : GrammarVersions.released()) {
+            for (String file : List.of("functions.txt", "metadata.txt")) {
+                String path = "/co/elastic/plugin/data/" + id + "/" + file;
+                Assert.assertNotNull("Missing resource " + path, VersionData.class.getResource(path));
+            }
         }
     }
 
