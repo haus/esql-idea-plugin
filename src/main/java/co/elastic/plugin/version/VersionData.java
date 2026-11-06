@@ -66,7 +66,24 @@ public final class VersionData {
         if (word == null || word.isBlank()) {
             return false;
         }
+        return isIn(id, word.trim().toUpperCase(Locale.ROOT));
+    }
+
+    /** Whether the word is a function or keyword in at least one released version. */
+    public static boolean isKnownInAnyVersion(String word) {
+        if (word == null || word.isBlank()) {
+            return false;
+        }
         String upper = word.trim().toUpperCase(Locale.ROOT);
+        for (String id : GrammarVersions.released()) {
+            if (isIn(id, upper)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isIn(String id, String upper) {
         if (functions(id).contains(upper)) {
             return true;
         }

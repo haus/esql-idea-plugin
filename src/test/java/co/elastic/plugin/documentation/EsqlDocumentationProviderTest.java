@@ -35,4 +35,33 @@ public class EsqlDocumentationProviderTest {
         Assert.assertNotNull(html);
         Assert.assertTrue(html, html.contains("ST_GEOHASH is not available in ES|QL 9.0"));
     }
+
+    @Test
+    public void testUnknownIdentifiersGetNoNote() {
+        Assert.assertNull(EsqlDocumentationProvider.notAvailableHtml("9.5", "my_field"));
+        Assert.assertNull(EsqlDocumentationProvider.notAvailableHtml("9.0", "my-index-2024"));
+        Assert.assertNull(EsqlDocumentationProvider.notAvailableHtml("9.5", "hello"));
+    }
+
+    @Test
+    public void testDocMapKeysThatAreNotTokensGetNoNote() {
+        for (String key : new String[]{"processing-commands", "source-commands", "inlinestats-by", "lookup-join"}) {
+            Assert.assertNull(key, EsqlDocumentationProvider.notAvailableHtml("9.5", key));
+            Assert.assertNull(key, EsqlDocumentationProvider.notAvailableHtml("9.0", key));
+        }
+    }
+
+    @Test
+    public void testNewerOnlyFunctionIsReportedOnOlderVersion() {
+        String html = EsqlDocumentationProvider.notAvailableHtml("9.0", "st_geohash");
+        Assert.assertNotNull(html);
+        Assert.assertTrue(html, html.contains("ST_GEOHASH is not available in ES|QL 9.0"));
+        Assert.assertNull(EsqlDocumentationProvider.notAvailableHtml("9.5", "st_geohash"));
+    }
+
+    @Test
+    public void testFunctionOfTheSelectedVersionKeepsItsDocs() {
+        Assert.assertNull(EsqlDocumentationProvider.notAvailableHtml("9.0", "abs"));
+        Assert.assertNotNull(EsqlDocsMap.getDocforCommand("abs"));
+    }
 }

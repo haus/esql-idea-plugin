@@ -121,9 +121,12 @@ public class EsqlDocumentationProvider implements DocumentationTargetProvider {
         }
     }
 
-    /** The documentation to show when a command or function is missing in a version, or null when it exists. */
+    /**
+     * The documentation to show when a command or function exists in some released version but not in the
+     * selected one. Null for anything else, including words that are no command or function at all.
+     */
     static @Nullable String notAvailableHtml(String versionId, String word) {
-        if (VersionData.isAvailable(versionId, word)) {
+        if (VersionData.isAvailable(versionId, word) || !VersionData.isKnownInAnyVersion(word)) {
             return null;
         }
         return "<p>" + StringUtil.escapeXmlEntities(word.toUpperCase(Locale.ROOT))

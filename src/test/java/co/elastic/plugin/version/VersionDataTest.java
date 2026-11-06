@@ -196,4 +196,15 @@ public class VersionDataTest {
         Assert.assertEquals(VersionData.metadataOptions("9.5"), VersionData.metadataOptions(null));
         Assert.assertTrue(VersionData.isAvailable("nope", "abs"));
     }
+
+    @Test
+    public void testIsKnownInAnyVersion() {
+        Assert.assertTrue(VersionData.isKnownInAnyVersion("st_geohash"));
+        Assert.assertTrue(VersionData.isKnownInAnyVersion("TERM"));
+        Assert.assertTrue(VersionData.isKnownInAnyVersion("from"));
+        Assert.assertFalse(VersionData.isKnownInAnyVersion("my_field"));
+        Assert.assertFalse(VersionData.isKnownInAnyVersion("processing-commands"));
+        Assert.assertFalse(VersionData.isKnownInAnyVersion(" "));
+        Assert.assertFalse(VersionData.isKnownInAnyVersion(null));
+    }
 }
