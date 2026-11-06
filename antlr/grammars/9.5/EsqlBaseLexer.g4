@@ -5,12 +5,13 @@
  * 2.0.
  */
 // Synced from elastic/elasticsearch, x-pack/plugin/esql/src/main/antlr
-//   branch: 9.5 @ efb86f5984c1 (2026-11-05)
+//   ref: upstream/9.5 @ efb86f5984c1 (2026-11-05)
 //   last commit touching the grammar: f65bf4192900 (2026-10-21)
-// Local changes to re-apply when syncing:
+// Local changes to re-apply when syncing (scripts/sync_grammar.py does this):
 //   - EsqlBaseParser.g4: `metadata` uses a separate `metadataSource` rule (needed by autocomplete)
 //   - EsqlBaseParser.g4, lexer/From.g4: EsqlCapabilities.Cap.EXTERNAL_COMMAND.isEnabled() is replaced
 //     by this.isDevVersion(), and the EsqlCapabilities import is dropped
+//   - EsqlBaseLexer.g4, EsqlBaseParser.g4: @header imports co.elastic.grammar.LexerConfig / ParserConfig
 //   - LexerConfig.java: rewindToTokenStart() copied from ES (used by lexer/InExpression.g4)
 lexer grammar EsqlBaseLexer;
 

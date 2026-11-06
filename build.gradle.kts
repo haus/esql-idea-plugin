@@ -96,6 +96,23 @@ java {
     sourceCompatibility = JavaVersion.VERSION_21
 }
 
+// A plugin built with an unreleased local grammar (antlr/local, see README) must never be published.
+val verifyNoLocalGrammar = tasks.register("verifyNoLocalGrammar") {
+    val localGrammar = layout.projectDirectory.dir("antlr/local").asFile
+    doLast {
+        if (localGrammar.exists()) {
+            throw GradleException(
+                "Refusing to build a release: $localGrammar exists (local ES|QL grammar build). " +
+                    "Delete it and run again."
+            )
+        }
+    }
+}
+
+tasks.matching { it.name == "buildPlugin" || it.name == "publishPlugin" }.configureEach {
+    dependsOn(verifyNoLocalGrammar)
+}
+
 tasks.register("downloadDocs") {
     doLast {
         val url = "https://www.elastic.co/docs/llm.zip"
