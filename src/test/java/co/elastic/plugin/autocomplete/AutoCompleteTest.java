@@ -90,6 +90,48 @@ public class AutoCompleteTest {
         Assert.assertFalse(off.contains(new Completion("DEDUP", Completion.Kind.KEYWORD)));
     }
 
+    private static Set<String> keywords(String text, String id, boolean devSyntax) {
+        var selection = new Selection(new GrammarVersion(id, id, false), devSyntax, null);
+        return Completion.computeCompletions(text, null, selection).stream()
+            .filter(c -> c.kind() == Completion.Kind.KEYWORD)
+            .map(Completion::text)
+            .collect(Collectors.toSet());
+    }
+
+    /** Dev-only keywords are offered as the text the lexer accepts, not as their token names. */
+    @Test
+    public void testDevOnlyKeywordsUseTheirLiteralText() {
+        Set<String> newest = keywords("FROM index | ", "9.5", true);
+        for (String keyword : List.of("LEFT", "RIGHT", "DEDUP")) {
+            Assert.assertTrue("Missing on 9.5: " + keyword + " in " + newest, newest.contains(keyword));
+        }
+        Set<String> oldest = keywords("FROM index | ", "9.0", true);
+        for (String keyword : List.of("LEFT", "RIGHT")) {
+            Assert.assertTrue("Missing on 9.0: " + keyword + " in " + oldest, oldest.contains(keyword));
+        }
+        Set<String> sources = keywords("", "9.1", true);
+        Assert.assertTrue("Missing on 9.1: TS in " + sources, sources.contains("TS"));
+    }
+
+    /**
+     * No version offers a token name such as JOIN_LEFT, or a dev-only command whose text is not a plain word
+     * (the test-only lookup_🐔 and insist_🐔).
+     */
+    @Test
+    public void testDevOnlyTokensWithoutAPlainWordAreNotOffered() {
+        for (String id : co.elastic.grammar.GrammarVersions.released()) {
+            for (String text : List.of("", "FROM index | ")) {
+                Set<String> on = keywords(text, id, true);
+                Set<String> off = keywords(text, id, false);
+                for (String wrong : List.of("JOIN_LEFT", "JOIN_RIGHT", "JOIN_FULL", "INSIST", "TIME_SERIES")) {
+                    Assert.assertFalse(id + " offers " + wrong + " for '" + text + "'", on.contains(wrong));
+                }
+                // LOOKUP is offered for LOOKUP JOIN in every mode, never for lookup_🐔 alone
+                Assert.assertEquals(id + " LOOKUP for '" + text + "'", off.contains("LOOKUP"), on.contains("LOOKUP"));
+            }
+        }
+    }
+
     @Test
     public void testSourceCommands() {
         assertCompletesSourceCommands("FR");

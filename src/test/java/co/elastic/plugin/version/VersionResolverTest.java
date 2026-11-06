@@ -50,7 +50,8 @@ public class VersionResolverTest {
 
     @Test
     public void testSpecificVersionWinsAndMismatchIsExplained() {
-        Selection s = VersionResolver.resolve("9.3", DevSyntaxMode.AUTO, new ServerInfo("9.4.1", false, false), RELEASED, null);
+        Selection s = VersionResolver.resolve("9.3", DevSyntaxMode.AUTO, new ServerInfo("9.4.1", false, false),
+                RELEASED, null);
         Assert.assertEquals("9.3", s.version().id());
         Assert.assertTrue(s.note().contains("9.4.1"));
     }
@@ -147,7 +148,8 @@ public class VersionResolverTest {
     @Test
     public void testDevSyntaxOnOffAlwaysWin() {
         ServerInfo[] all = {
-            null, new ServerInfo("9.6.0-SNAPSHOT", true, false), new ServerInfo("9.5.0", false, false), new ServerInfo("abc", false, false)
+            null, new ServerInfo("9.6.0-SNAPSHOT", true, false), new ServerInfo("9.5.0", false, false),
+            new ServerInfo("abc", false, false)
         };
         for (ServerInfo info : all) {
             Assert.assertTrue(dev(DevSyntaxMode.ON, info));

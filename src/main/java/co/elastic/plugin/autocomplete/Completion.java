@@ -33,6 +33,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 public record Completion(String text, Kind kind) {
     public enum Kind {
@@ -184,17 +185,38 @@ public record Completion(String text, Kind kind) {
                 case "EOF":
                     break;
                 default:
-                    String display = parser.getVocabulary().getDisplayName(tokenType);
-                    boolean devToken = display != null && display.startsWith("DEV_");
-                    if (display != null && !display.isEmpty() && (!devToken || devSyntax)) {
-                        String tokenText = (devToken ? display.substring("DEV_".length()) : display)
-                            .replaceAll("'", "").toUpperCase(Locale.ROOT);
-                        completions.add(new Completion(tokenText, Kind.KEYWORD));
+                    String keyword = keywordText(grammar, parser, tokenType, name, devSyntax);
+                    if (keyword != null) {
+                        completions.add(new Completion(keyword, Kind.KEYWORD));
                     }
             }
         }
 
         return completions;
+    }
+
+    /** A plain word such as {@code left}; the test-only dev commands such as {@code lookup_🐔} are not. */
+    private static final Pattern PLAIN_WORD = Pattern.compile("[A-Za-z][A-Za-z0-9_]*");
+
+    /**
+     * The keyword to offer for a token, or null to offer none. A dev-only token (named DEV_...) is offered only
+     * with dev-only syntax on, as its literal text from the grammar (DEV_JOIN_LEFT is "left"), and only when that
+     * literal is a plain word.
+     */
+    private static String keywordText(EsqlGrammar grammar, org.antlr.v4.runtime.Parser parser, int tokenType,
+                                      String name, boolean devSyntax) {
+        if (name != null && name.startsWith("DEV_")) {
+            String literal = grammar.literal(tokenType);
+            if (!devSyntax || literal == null || !PLAIN_WORD.matcher(literal).matches()) {
+                return null;
+            }
+            return literal.toUpperCase(Locale.ROOT);
+        }
+        String display = parser.getVocabulary().getDisplayName(tokenType);
+        if (display == null || display.isEmpty()) {
+            return null;
+        }
+        return display.replaceAll("'", "").toUpperCase(Locale.ROOT);
     }
 
     private static Set<Completion> computeSchemaDependentCompletions(Parser.ParserInfo parserInfo,
