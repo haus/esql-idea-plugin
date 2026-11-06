@@ -90,20 +90,35 @@ applies to the grammar, the script stops and names the one that failed.
 
 ### Add a new minor version
 
-1. Add the version (for example `9.6`) as a new line in `scripts/grammar-versions.txt`.
-2. Run `python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch 9.6`.
-3. Run `./gradlew test` and commit the new `antlr/grammars/9.6/` directory.
+The build finds the grammars by listing `antlr/grammars/`, so a new directory there is a new version. To add 9.6:
 
-To refresh every version, run the script once for each line of `scripts/grammar-versions.txt`.
+1. Sync its grammar: `python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch 9.6`. This creates
+   `antlr/grammars/9.6/`.
+2. Sync its function names: `python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch --functions 9.6`.
+   This writes `src/main/resources/co/elastic/plugin/data/9.6/functions.txt` (see below).
+3. Write `src/main/resources/co/elastic/plugin/data/9.6/metadata.txt` by hand, one metadata field per line, from
+   that branch's `esql-metadata-fields.md`. Without it, selecting 9.6 fails at runtime; `VersionDataTest` checks
+   that every version has both files.
+4. Update the tests that list the versions: `GrammarVersionsTest.testReleasedListsNineZeroToNineFive`,
+   `EsqlGrammarTest.testNewestIsTheLastReleasedVersion` (the newest id), `VersionDataTest`
+   (`testMetadataOptionsAreNonEmptyAndContainId`) and, for commands new in 9.6, `FIRST_VERSION` in
+   `EsqlGrammarVersionsTest`.
+5. Run `./gradlew test` and commit the new directories and files.
 
-Function names are synced the same way, with `--functions`:
+To refresh every version, run the script once per directory:
+
+```
+for v in $(ls antlr/grammars); do python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch "$v"; done
+```
+
+Function names are synced with `--functions`:
 
 ```
 python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch --functions 9.6
 ```
 
-This writes `src/main/resources/co/elastic/plugin/data/9.6/functions.txt` from the Kibana JSON definitions (9.0 to
-9.4) or the generated markdown snippets (9.5 on). The `metadata.txt` next to it is curated by hand from that
+This writes `src/main/resources/co/elastic/plugin/data/9.6/functions.txt` from the Kibana JSON definitions (9.0
+to 9.4) or the generated markdown snippets (9.5 on). The `metadata.txt` next to it is curated by hand from that
 branch's `esql-metadata-fields.md`, because Elasticsearch has no machine-readable list of metadata fields.
 
 ### Build with an unreleased grammar (`main`)
@@ -119,9 +134,11 @@ python3 scripts/sync_grammar.py --es-repo ~/repos/elasticsearch --local --worktr
 ```
 
 `--ref` accepts any branch, tag or commit. The build adds a "local" grammar version, which is never chosen
-automatically: pick "Local build (<ref> @ <commit>)" under Settings | Tools | ES|QL | ES|QL version. `antlr/local/` is gitignored. Release tasks (`buildPlugin` and `publishPlugin`) fail while it
-exists, to keep a local grammar out of a published plugin. To build a zip anyway, delete `antlr/local/` first, or run
-Gradle with `-x verifyNoLocalGrammar`. Delete the directory to go back to released grammars only.
+automatically: pick "Local build (<ref> @ <commit>)" under Settings | Tools | ES|QL | ES|QL version.
+`antlr/local/` is gitignored. Release tasks (`buildPlugin` and `publishPlugin`) fail while it exists, so that
+released plugins never contain a local grammar. Running Gradle with `-x verifyNoLocalGrammar` skips that check
+and builds a zip for your own use only; never publish or share such a zip. Delete the directory to go back to
+released grammars only.
 
 A grammar from `main` can use predicates or helpers that the plugin's `LexerConfig` and `ParserConfig` classes do
 not have yet. Then the Java compile step fails and the plugin needs a matching change.
