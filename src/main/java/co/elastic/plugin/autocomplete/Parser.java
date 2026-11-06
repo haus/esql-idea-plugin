@@ -19,8 +19,8 @@
 package co.elastic.plugin.autocomplete;
 
 import co.elastic.grammar.EsqlGrammar;
+import co.elastic.plugin.version.GrammarFallback;
 import co.elastic.plugin.version.Selection;
-import com.intellij.openapi.diagnostic.Logger;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
 import org.antlr.v4.runtime.ParserRuleContext;
@@ -38,9 +38,7 @@ public class Parser {
                              List<String> queriedIndexes, boolean devSyntax) {}
 
     public static Parser.ParserInfo parse(String query, Selection selection) {
-        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest(selection.version().id(),
-            id -> Logger.getInstance(Parser.class).warn("No ES|QL grammar for version " + id
-                + ", using the newest"));
+        EsqlGrammar grammar = GrammarFallback.grammarFor(selection);
         boolean devSyntax = selection.devSyntax();
         var lexer = grammar.newLexer(CharStreams.fromString(query), devSyntax);
         lexer.removeErrorListeners();

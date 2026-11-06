@@ -21,13 +21,13 @@ package co.elastic.plugin.annotator;
 import co.elastic.grammar.EsqlGrammar;
 import co.elastic.plugin.EsqlIcon;
 import co.elastic.plugin.EsqlRunIcon;
+import co.elastic.plugin.version.GrammarFallback;
 import co.elastic.plugin.version.GrammarSelection;
 import co.elastic.plugin.version.Selection;
 import co.elastic.plugin.version.VersionData;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
-import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
@@ -210,9 +210,7 @@ public class EsqlAnnotator implements Annotator {
     }
 
     static List<EsqlErrorListener.Error> validate(String query, Selection selection) {
-        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest(selection.version().id(),
-            id -> Logger.getInstance(EsqlAnnotator.class).warn("No ES|QL grammar for version " + id
-                + ", using the newest"));
+        EsqlGrammar grammar = GrammarFallback.grammarFor(selection);
         var lexer = grammar.newLexer(CharStreams.fromString(query), selection.devSyntax());
         var parser = grammar.newParser(new CommonTokenStream(lexer), selection.devSyntax());
         parser.setBuildParseTree(false);

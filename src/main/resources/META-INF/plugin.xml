@@ -68,6 +68,8 @@
                              id="co.elastic.plugin.settings.EsqlSettingsConfigurable"
                              displayName="ES|QL"/>
 
+    <notificationGroup id="ES|QL grammar" displayType="BALLOON"/>
+
     <toolWindow id="Elasticsearch"
                 anchor="bottom"
                 factoryClass="co.elastic.plugin.execution.EsqlResultsToolWindowFactory"

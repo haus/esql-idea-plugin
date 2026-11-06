@@ -93,15 +93,20 @@ public class EsqlGrammarTest {
     @Test
     public void testForVersionOrNewestFallsBackAndReports() {
         List<String> missing = new ArrayList<>();
-        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest("1.0", missing::add);
+        List<Throwable> causes = new ArrayList<>();
+        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest("1.0", (id, cause) -> {
+            missing.add(id);
+            causes.add(cause);
+        });
         Assert.assertEquals(NEWEST, grammar.id());
         Assert.assertEquals(List.of("1.0"), missing);
+        Assert.assertTrue(causes.getFirst() instanceof IllegalArgumentException);
     }
 
     @Test
     public void testForVersionOrNewestDoesNotReportAKnownId() {
         List<String> missing = new ArrayList<>();
-        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest(NEWEST, missing::add);
+        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest(NEWEST, (id, cause) -> missing.add(id));
         Assert.assertEquals(NEWEST, grammar.id());
         Assert.assertEquals(List.of(), missing);
     }

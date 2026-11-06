@@ -33,7 +33,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.function.Consumer;
+import java.util.function.BiConsumer;
 
 /**
  * Loads the generated lexer and parser of one ES|QL grammar version by name, so that callers never refer to
@@ -83,14 +83,14 @@ public final class EsqlGrammar {
 
     /**
      * Returns the grammar for a version id, or the newest grammar when there is none for the id. In that case
-     * {@code onFallback} receives the missing id.
+     * {@code onFallback} receives the missing id and the reason it could not be loaded.
      */
-    public static EsqlGrammar forVersionOrNewest(String id, Consumer<String> onFallback) {
+    public static EsqlGrammar forVersionOrNewest(String id, BiConsumer<String, Throwable> onFallback) {
         try {
             return forVersion(id);
         } catch (IllegalArgumentException e) {
             if (onFallback != null) {
-                onFallback.accept(id);
+                onFallback.accept(id, e);
             }
             return forVersion(GrammarVersions.newest());
         }
