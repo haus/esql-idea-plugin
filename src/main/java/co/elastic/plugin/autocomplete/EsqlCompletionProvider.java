@@ -18,7 +18,6 @@
  */
 package co.elastic.plugin.autocomplete;
 
-import co.elastic.grammar.EsqlBaseLexer;
 import co.elastic.plugin.connection.EsqlPluginQueryManager;
 import co.elastic.plugin.version.GrammarSelection;
 import com.intellij.codeInsight.completion.CompletionParameters;
@@ -84,7 +83,7 @@ public class EsqlCompletionProvider extends CompletionProvider<CompletionParamet
             return;
         }
 
-        var parserInfo = Parser.parse(text, GrammarSelection.current().devSyntax());
+        var parserInfo = Parser.parse(text, GrammarSelection.current());
         var completions = Completion.computeCompletions(parserInfo, queryManager);
         var lastToken = parserInfo.tokens().getLast();
         for (Completion c : completions) {
@@ -94,7 +93,7 @@ public class EsqlCompletionProvider extends CompletionProvider<CompletionParamet
                 default -> 5;
             };
 
-            var matcher = getMatcher(lastToken);
+            var matcher = getMatcher(parserInfo, lastToken);
 
             switch (c.kind()) {
                 case METADATA, NAME, FIELD:
@@ -110,17 +109,17 @@ public class EsqlCompletionProvider extends CompletionProvider<CompletionParamet
         }
     }
 
-    private static @NotNull PrefixMatcher getMatcher(Token lastToken) {
+    private static @NotNull PrefixMatcher getMatcher(Parser.ParserInfo parserInfo, Token lastToken) {
         // If the last token is not a space (spaces are in a hidden channel) or a parenthesis, or a comma,
         // use it on matching to replace the current word
-        return isSpaceOrParenthesisOrComma(lastToken) ? new PermissivePrefixMatcher() :
+        return isSpaceOrParenthesisOrComma(parserInfo, lastToken) ? new PermissivePrefixMatcher() :
             new PermissivePrefixMatcher(lastToken.getText());
     }
 
-    private static boolean isSpaceOrParenthesisOrComma(Token lastToken) {
-        return lastToken.getChannel() != EsqlBaseLexer.DEFAULT_TOKEN_CHANNEL ||
-               lastToken.getType() == EsqlBaseLexer.COMMA ||
-               (lastToken.getType() == EsqlBaseLexer.LP || lastToken.getType() == EsqlBaseLexer.RP);
+    private static boolean isSpaceOrParenthesisOrComma(Parser.ParserInfo parserInfo, Token lastToken) {
+        if (lastToken.getChannel() != Token.DEFAULT_CHANNEL) return true;
+        String name = parserInfo.grammar().tokenName(parserInfo.parser(), lastToken.getType());
+        return "COMMA".equals(name) || "LP".equals(name) || "RP".equals(name);
     }
 
     private static void insertLookupWithColor(@NotNull CompletionResultSet result, String token,

@@ -18,41 +18,57 @@
  */
 package co.elastic.plugin.autocomplete;
 
-import co.elastic.grammar.EsqlBaseLexer;
-import co.elastic.grammar.EsqlBaseParser;
-import co.elastic.grammar.EsqlBaseParserBaseListener;
-import co.elastic.grammar.EsqlConfig;
+import co.elastic.grammar.EsqlGrammar;
+import co.elastic.plugin.version.Selection;
+import com.intellij.openapi.diagnostic.Logger;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.Token;
+import org.antlr.v4.runtime.tree.ErrorNode;
+import org.antlr.v4.runtime.tree.ParseTreeListener;
+import org.antlr.v4.runtime.tree.TerminalNode;
 
 import java.util.ArrayList;
 import java.util.List;
 
 
 public class Parser {
-    public record ParserInfo(EsqlBaseParser parser, List<Token> tokens, List<String> queriedIndexes,
-                             boolean devSyntax) {}
+    public record ParserInfo(EsqlGrammar grammar, org.antlr.v4.runtime.Parser parser, List<Token> tokens,
+                             List<String> queriedIndexes, boolean devSyntax) {}
 
-    public static Parser.ParserInfo parse(String query, boolean devSyntax) {
-        EsqlConfig config = new EsqlConfig(devSyntax);
-        EsqlBaseLexer lexer = new EsqlBaseLexer(CharStreams.fromString(query));
+    public static Parser.ParserInfo parse(String query, Selection selection) {
+        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest(selection.version().id(),
+            id -> Logger.getInstance(Parser.class).warn("No ES|QL grammar for version " + id
+                + ", using the newest"));
+        boolean devSyntax = selection.devSyntax();
+        var lexer = grammar.newLexer(CharStreams.fromString(query), devSyntax);
         lexer.removeErrorListeners();
-        lexer.setEsqlConfig(config);
 
         CommonTokenStream tokenStream = new CommonTokenStream(lexer);
 
         List<String> queriedIndexes = new ArrayList<>();
-        EsqlBaseParser parser = new EsqlBaseParser(tokenStream);
+        var parser = grammar.newParser(tokenStream, devSyntax);
         parser.removeErrorListeners();
-        parser.setEsqlConfig(config);
-        parser.addParseListener(new EsqlBaseParserBaseListener() {
+        int indexPattern = grammar.ruleIndex("indexPattern");
+        parser.addParseListener(new ParseTreeListener() {
             @Override
-            public void exitIndexPattern(EsqlBaseParser.IndexPatternContext ctx) {
-                queriedIndexes.add(ctx.getText());
+            public void visitTerminal(TerminalNode node) {}
+
+            @Override
+            public void visitErrorNode(ErrorNode node) {}
+
+            @Override
+            public void enterEveryRule(ParserRuleContext ctx) {}
+
+            @Override
+            public void exitEveryRule(ParserRuleContext ctx) {
+                if (indexPattern >= 0 && ctx.getRuleIndex() == indexPattern) {
+                    queriedIndexes.add(ctx.getText());
+                }
             }
         });
-        parser.singleStatement();
+        grammar.singleStatement(parser);
 
         // Make a copy of input tokens array because we are going to remove the EOF
         var tokens = new ArrayList<>(tokenStream.getTokens());
@@ -62,6 +78,6 @@ public class Parser {
         // Reset the parser so CodeCompletionCore can use the ATN from the start
         parser.reset();
 
-        return new ParserInfo(parser, tokens, queriedIndexes, devSyntax);
+        return new ParserInfo(grammar, parser, tokens, queriedIndexes, devSyntax);
     }
 }

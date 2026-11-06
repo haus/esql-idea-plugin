@@ -17,7 +17,7 @@ public abstract class ParserConfig extends Parser {
         super(input);
     }
 
-    boolean isDevVersion() {
+    protected boolean isDevVersion() {
         return config == null || config.isDevVersion();
     }
 

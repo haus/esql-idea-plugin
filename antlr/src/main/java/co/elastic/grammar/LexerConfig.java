@@ -23,7 +23,7 @@ public abstract class LexerConfig extends Lexer {
         super(input);
     }
 
-    boolean isDevVersion() {
+    protected boolean isDevVersion() {
         return config == null || config.isDevVersion();
     }
 
@@ -32,24 +32,24 @@ public abstract class LexerConfig extends Lexer {
     }
 
     // Needed by the Promql command
-    void incPromqlDepth() {
+    protected void incPromqlDepth() {
         promqlDepth++;
     }
 
-    void decPromqlDepth() {
+    protected void decPromqlDepth() {
         if (promqlDepth == 0) {
             throw new IllegalStateException("Invalid PromQL command, unexpected '('");
         }
         promqlDepth--;
     }
 
-    void resetPromqlDepth() {
+    protected void resetPromqlDepth() {
         if (promqlDepth != 0) {
             throw new IllegalStateException("Invalid PromQL declaration, missing [{}] [{}] parenthesis");
         }
     }
 
-    boolean isPromqlQuery() {
+    protected boolean isPromqlQuery() {
         return promqlDepth > 0;
     }
 
@@ -74,7 +74,7 @@ public abstract class LexerConfig extends Lexer {
      * that ever changes, the line counter would need to be advanced by however
      * many newlines the prefix contains.
      */
-    void rewindToTokenStart(int charsToKeep) {
+    protected void rewindToTokenStart(int charsToKeep) {
         _input.seek(_tokenStartCharIndex + charsToKeep);
         getInterpreter().setLine(_tokenStartLine);
         getInterpreter().setCharPositionInLine(_tokenStartCharPositionInLine + charsToKeep);

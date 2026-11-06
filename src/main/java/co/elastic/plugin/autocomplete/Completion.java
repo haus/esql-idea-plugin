@@ -18,7 +18,7 @@
  */
 package co.elastic.plugin.autocomplete;
 
-import co.elastic.grammar.EsqlBaseParser;
+import co.elastic.grammar.EsqlGrammar;
 import co.elastic.grammar.completion.CodeCompletionCore;
 import co.elastic.grammar.completion.CodeCompletionCore.CandidatesCollection;
 import co.elastic.plugin.connection.EsqlSchemaProvider;
@@ -45,6 +45,11 @@ public record Completion(String text, Kind kind) {
         FIELD,
     }
 
+    // subquery is preferred because subqueries open with LP, which would otherwise be completed as the start
+    // of a function call
+    private static final List<String> PREFERRED_RULES =
+        List.of("indexPattern", "fieldName", "fieldNamePattern", "metadataSource", "subquery");
+
     /** Version 9.5 with dev-only syntax off. Does not need a running IDE. */
     static Set<Completion> computeCompletions(String text, EsqlSchemaProvider queryManager) {
         return computeCompletions(text, queryManager,
@@ -53,7 +58,7 @@ public record Completion(String text, Kind kind) {
 
     static Set<Completion> computeCompletions(String text, EsqlSchemaProvider queryManager,
                                               Selection selection) {
-        var parserInfo = Parser.parse(text, selection.devSyntax());
+        var parserInfo = Parser.parse(text, selection);
         return computeCompletions(parserInfo, queryManager);
     }
 
@@ -63,8 +68,7 @@ public record Completion(String text, Kind kind) {
         int caretTokenIndex = caretToken != null ? caretToken.getTokenIndex() : 0;
         var candidates = completionCandidates(parserInfo);
         Set<Completion> completions = new HashSet<>();
-        completions.addAll(computeTokenCompletions(candidates, caretTokenIndex, tokens,
-            parserInfo.devSyntax()));
+        completions.addAll(computeTokenCompletions(parserInfo, candidates, caretTokenIndex, tokens));
         completions.addAll(computeSchemaDependentCompletions(parserInfo, candidates, queryManager,
             caretTokenIndex, tokens));
         return completions;
@@ -77,6 +81,8 @@ public record Completion(String text, Kind kind) {
      */
     private static boolean isRuleAlreadyUsed(CandidatesCollection candidates, int ruleIndex,
                                              int caretTokenIndex, List<Token> allTokens) {
+        // -1: the grammar has no such rule
+        if (ruleIndex < 0) return false;
         var rule = candidates.rules.get(ruleIndex);
         if (rule == null) return false;
         if (rule.startTokenIndex >= caretTokenIndex) return true;
@@ -89,23 +95,26 @@ public record Completion(String text, Kind kind) {
         return true;
     }
 
-    private static Set<Completion> computeTokenCompletions(CandidatesCollection candidates,
-                                                           int caretTokenIndex, List<Token> allTokens,
-                                                           boolean devSyntax) {
+    private static Set<Completion> computeTokenCompletions(Parser.ParserInfo parserInfo,
+                                                           CandidatesCollection candidates,
+                                                           int caretTokenIndex, List<Token> allTokens) {
         Set<Completion> completions = new HashSet<>();
+        EsqlGrammar grammar = parserInfo.grammar();
+        var parser = parserInfo.parser();
+        boolean devSyntax = parserInfo.devSyntax();
 
-        if (isRuleAlreadyUsed(candidates, EsqlBaseParser.RULE_indexPattern, caretTokenIndex,
+        if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("indexPattern"), caretTokenIndex,
             allTokens)) {
             completions.add(new Completion("{string}", Kind.PLACEHOLDER));
         }
 
-        if (isRuleAlreadyUsed(candidates, EsqlBaseParser.RULE_fieldName, caretTokenIndex, allTokens)
-            || isRuleAlreadyUsed(candidates, EsqlBaseParser.RULE_fieldNamePattern, caretTokenIndex,
+        if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldName"), caretTokenIndex, allTokens)
+            || isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldNamePattern"), caretTokenIndex,
             allTokens)) {
             completions.add(new Completion("{var}", Kind.PLACEHOLDER));
         }
 
-        if (isRuleAlreadyUsed(candidates, EsqlBaseParser.RULE_metadataSource, caretTokenIndex,
+        if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("metadataSource"), caretTokenIndex,
             allTokens)) {
             for (String opt : METADATA_OPTIONS) {
                 completions.add(new Completion(opt, Kind.METADATA));
@@ -115,43 +124,44 @@ public record Completion(String text, Kind kind) {
         Set<Integer> tokenCompletions = candidates.tokens.keySet();
 
         for (Integer tokenType : tokenCompletions) {
-            switch (tokenType) {
+            String name = grammar.tokenName(parser, tokenType);
+            switch (name == null ? "" : name) {
                 // replacing QUOTED_STRING and UNQUOTED_SOURCE with just "{string}"
-                case EsqlBaseParser.QUOTED_STRING:
-                case EsqlBaseParser.UNQUOTED_SOURCE:
+                case "QUOTED_STRING":
+                case "UNQUOTED_SOURCE":
                     completions.add(new Completion("{string}", Kind.PLACEHOLDER));
                     break;
                 // replacing UNQUOTED_IDENTIFIER and QUOTED_IDENTIFIER with just {var}
-                case EsqlBaseParser.UNQUOTED_IDENTIFIER:
-                case EsqlBaseParser.QUOTED_IDENTIFIER:
+                case "UNQUOTED_IDENTIFIER":
+                case "QUOTED_IDENTIFIER":
                     completions.add(new Completion("{var}", Kind.PLACEHOLDER));
                     break;
                 // replacing NAMED_OR_POSITIONAL_PARAM, NAMED_OR_POSITIONAL_DOUBLE_PARAMS and ID_PATTERN
                 // with just {param}
-                case EsqlBaseParser.NAMED_OR_POSITIONAL_PARAM:
-                case EsqlBaseParser.NAMED_OR_POSITIONAL_DOUBLE_PARAMS:
-                case EsqlBaseParser.ID_PATTERN:
+                case "NAMED_OR_POSITIONAL_PARAM":
+                case "NAMED_OR_POSITIONAL_DOUBLE_PARAMS":
+                case "ID_PATTERN":
                     completions.add(new Completion("{param}", Kind.PLACEHOLDER));
                     break;
                 // replacing DECIMAL_LITERAL with just {num}
-                case EsqlBaseParser.DECIMAL_LITERAL:
+                case "DECIMAL_LITERAL":
                     completions.add(new Completion("{num}", Kind.PLACEHOLDER));
                     break;
                 // LP means functions, adding brackets to token
-                case EsqlBaseParser.LP:
+                case "LP":
                     for (String function : FUNCTIONS) {
                         completions.add(new Completion(function + "()", Kind.FUNCTION));
                     }
                     break;
-                case EsqlBaseParser.PIPE:
+                case "PIPE":
                     completions.add(new Completion("|", Kind.PIPE));
                     break;
-                case EsqlBaseParser.PARAM:
-                case EsqlBaseParser.DOUBLE_PARAMS:
-                case EsqlBaseParser.EOF:
+                case "PARAM":
+                case "DOUBLE_PARAMS":
+                case "EOF":
                     break;
                 default:
-                    String display = EsqlBaseParser.VOCABULARY.getDisplayName(tokenType);
+                    String display = parser.getVocabulary().getDisplayName(tokenType);
                     boolean devToken = display != null && display.startsWith("DEV_");
                     if (display != null && !display.isEmpty() && (!devToken || devSyntax)) {
                         String tokenText = (devToken ? display.substring("DEV_".length()) : display)
@@ -173,16 +183,17 @@ public record Completion(String text, Kind kind) {
         if (queryManager == null) {
             return completions;
         }
+        EsqlGrammar grammar = parserInfo.grammar();
 
-        if (isRuleAlreadyUsed(candidates, EsqlBaseParser.RULE_indexPattern, caretTokenIndex,
+        if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("indexPattern"), caretTokenIndex,
             allTokens)) {
             for (String index : queryManager.getIndices()) {
                 completions.add(new Completion(index, Kind.NAME));
             }
         }
 
-        if (isRuleAlreadyUsed(candidates, EsqlBaseParser.RULE_fieldName, caretTokenIndex, allTokens)
-            || isRuleAlreadyUsed(candidates, EsqlBaseParser.RULE_fieldNamePattern, caretTokenIndex,
+        if (isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldName"), caretTokenIndex, allTokens)
+            || isRuleAlreadyUsed(candidates, grammar.ruleIndex("fieldNamePattern"), caretTokenIndex,
             allTokens)) {
             var queriedIndexes = parserInfo.queriedIndexes();
             if (!queriedIndexes.isEmpty()) {
@@ -199,14 +210,16 @@ public record Completion(String text, Kind kind) {
     private static CandidatesCollection completionCandidates(Parser.ParserInfo parserInfo) {
         var parser = parserInfo.parser();
         var tokens = parserInfo.tokens();
+        EsqlGrammar grammar = parserInfo.grammar();
 
         var codeCompletionCode = new CodeCompletionCore(parser);
-        codeCompletionCode.preferredRules.add(EsqlBaseParser.RULE_indexPattern);
-        codeCompletionCode.preferredRules.add(EsqlBaseParser.RULE_fieldName);
-        codeCompletionCode.preferredRules.add(EsqlBaseParser.RULE_fieldNamePattern);
-        codeCompletionCode.preferredRules.add(EsqlBaseParser.RULE_metadataSource);
-        // subqueries open with LP, which would otherwise be completed as the start of a function call
-        codeCompletionCode.preferredRules.add(EsqlBaseParser.RULE_subquery);
+        for (String rule : PREFERRED_RULES) {
+            int index = grammar.ruleIndex(rule);
+            // a version without the rule just gets no special handling for it
+            if (index >= 0) {
+                codeCompletionCode.preferredRules.add(index);
+            }
+        }
         codeCompletionCode.predicateContext = parserInfo.devSyntax() ? "dev" : "release";
         var caretIndex = tokens.size() - 1;
         return codeCompletionCode.collectCandidates(caretIndex, null);

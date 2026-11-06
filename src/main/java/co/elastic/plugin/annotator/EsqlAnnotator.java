@@ -18,15 +18,15 @@
  */
 package co.elastic.plugin.annotator;
 
-import co.elastic.grammar.EsqlBaseLexer;
-import co.elastic.grammar.EsqlBaseParser;
-import co.elastic.grammar.EsqlConfig;
+import co.elastic.grammar.EsqlGrammar;
 import co.elastic.plugin.EsqlIcon;
 import co.elastic.plugin.EsqlRunIcon;
 import co.elastic.plugin.version.GrammarSelection;
+import co.elastic.plugin.version.Selection;
 import com.intellij.lang.annotation.AnnotationHolder;
 import com.intellij.lang.annotation.Annotator;
 import com.intellij.lang.annotation.HighlightSeverity;
+import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.editor.DefaultLanguageHighlighterColors;
 import com.intellij.openapi.editor.Document;
 import com.intellij.openapi.editor.colors.TextAttributesKey;
@@ -171,7 +171,7 @@ public class EsqlAnnotator implements Annotator {
         TextRange wholeStringRange = new TextRange(startingPosition, endingPosition);
 
         try {
-            for (EsqlErrorListener.Error error : validate(query, GrammarSelection.current().devSyntax())) {
+            for (EsqlErrorListener.Error error : validate(query, GrammarSelection.current())) {
 
                 // need to retrieve specific line where error is
                 int absoluteCharPosition = calculateAbsoluteCharPosition(error, element, startingPosition);
@@ -209,13 +209,12 @@ public class EsqlAnnotator implements Annotator {
         }
     }
 
-    static List<EsqlErrorListener.Error> validate(String query, boolean devSyntax) {
-        EsqlBaseLexer lexer = new EsqlBaseLexer(CharStreams.fromString(query));
-        EsqlBaseParser parser = new EsqlBaseParser(new CommonTokenStream(lexer));
-
-        EsqlConfig config = new EsqlConfig(devSyntax);
-        lexer.setEsqlConfig(config);
-        parser.setEsqlConfig(config);
+    static List<EsqlErrorListener.Error> validate(String query, Selection selection) {
+        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest(selection.version().id(),
+            id -> Logger.getInstance(EsqlAnnotator.class).warn("No ES|QL grammar for version " + id
+                + ", using the newest"));
+        var lexer = grammar.newLexer(CharStreams.fromString(query), selection.devSyntax());
+        var parser = grammar.newParser(new CommonTokenStream(lexer), selection.devSyntax());
         parser.setBuildParseTree(false);
         EsqlErrorListener errorListener = new EsqlErrorListener(new ArrayList<>());
 
@@ -225,7 +224,7 @@ public class EsqlAnnotator implements Annotator {
         parser.addErrorListener(errorListener);
 
         // rule check
-        parser.singleStatement();
+        grammar.singleStatement(parser);
         return errorListener.errors;
     }
 

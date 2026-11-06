@@ -59,7 +59,13 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public class CodeCompletionCore {
-    private static Map<String, Map<Integer, FollowSetsHolder>> followSetsByATN =
+    /**
+     * Identifies one grammar (by ATN identity, since ATN does not override equals) under one predicate context.
+     * Parsers of different grammars can share a class name, for example in different class loaders.
+     */
+    private record FollowSetsKey(ATN atn, String predicateContext) {}
+
+    private static Map<FollowSetsKey, Map<Integer, FollowSetsHolder>> followSetsByATN =
         new ConcurrentHashMap<>();
 
     private static String[] atnStateTypeMap = {
@@ -96,7 +102,7 @@ public class CodeCompletionCore {
     private List<Integer> precedenceStack;
 
     /**
-     * Follow sets are cached per parser class, and they depend on how the grammar predicates evaluate.
+     * Follow sets are cached per grammar (ATN), and they depend on how the grammar predicates evaluate.
      * Parsers whose predicates can differ (for example dev-only syntax on or off) must use different values.
      */
     public String predicateContext = "";
@@ -365,7 +371,7 @@ public class CodeCompletionCore {
         Set<Integer> result = new HashSet<>();
 
         Map<Integer, FollowSetsHolder> setsPerState = followSetsByATN.computeIfAbsent(
-            parser.getClass().getName() + ":" + predicateContext, k -> new ConcurrentHashMap<>());
+            new FollowSetsKey(atn, predicateContext), k -> new ConcurrentHashMap<>());
 
         FollowSetsHolder followSets = setsPerState.get(startState.stateNumber);
         if (followSets == null) {

@@ -18,10 +18,11 @@
  */
 package co.elastic.plugin.annotator;
 
-import co.elastic.grammar.EsqlBaseLexer;
-import co.elastic.grammar.EsqlBaseParser;
+import co.elastic.grammar.EsqlGrammar;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.Lexer;
+import org.antlr.v4.runtime.Parser;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -41,14 +42,15 @@ public class EsqlGrammarTests {
             "| EVAL key = CONCAT(_index, \"_\", TO_STR(id)) |\n";
 
         InputStream stream = new ByteArrayInputStream(wheeQuery.getBytes(StandardCharsets.UTF_8));
-        EsqlBaseLexer lexer = new EsqlBaseLexer(CharStreams.fromStream(stream, StandardCharsets.UTF_8));
-        EsqlBaseParser parser = new EsqlBaseParser(new CommonTokenStream(lexer));
+        EsqlGrammar grammar = EsqlGrammar.forVersion("9.5");
+        Lexer lexer = grammar.newLexer(CharStreams.fromStream(stream, StandardCharsets.UTF_8), true);
+        Parser parser = grammar.newParser(new CommonTokenStream(lexer), true);
 
         parser.setBuildParseTree(false);
         EsqlErrorListener errorListener = new EsqlErrorListener(new ArrayList<>());
         parser.addErrorListener(errorListener);
 
-        parser.singleStatement();
+        grammar.singleStatement(parser);
 
         Assert.assertEquals(2,errorListener.errors.size());
         Assert.assertTrue(errorListener.errors.get(0).message.contains("mismatched input 'WHEE'"));

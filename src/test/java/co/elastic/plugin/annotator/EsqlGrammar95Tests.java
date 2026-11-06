@@ -18,16 +18,21 @@
  */
 package co.elastic.plugin.annotator;
 
-import co.elastic.grammar.EsqlBaseLexer;
-import co.elastic.grammar.EsqlBaseParser;
-import co.elastic.grammar.EsqlBaseParserBaseListener;
-import co.elastic.grammar.EsqlConfig;
+import co.elastic.grammar.EsqlGrammar;
+import co.elastic.plugin.version.GrammarVersion;
+import co.elastic.plugin.version.Selection;
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
 import org.antlr.v4.runtime.CommonTokenStream;
+import org.antlr.v4.runtime.Lexer;
+import org.antlr.v4.runtime.Parser;
+import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.RecognitionException;
 import org.antlr.v4.runtime.Recognizer;
+import org.antlr.v4.runtime.tree.ErrorNode;
+import org.antlr.v4.runtime.tree.ParseTreeListener;
 import org.antlr.v4.runtime.tree.ParseTreeWalker;
+import org.antlr.v4.runtime.tree.TerminalNode;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -39,6 +44,8 @@ import java.util.List;
  * The example queries come from the Elasticsearch csv-spec and parser tests.
  */
 public class EsqlGrammar95Tests {
+
+    private static final EsqlGrammar GRAMMAR = EsqlGrammar.forVersion("9.5");
 
     private record SyntaxError(int line, int charPositionInLine, String message) {
         @Override
@@ -57,18 +64,15 @@ public class EsqlGrammar95Tests {
             }
         };
 
-        EsqlConfig config = new EsqlConfig(isDevVersion);
-        EsqlBaseLexer lexer = new EsqlBaseLexer(CharStreams.fromString(query));
+        Lexer lexer = GRAMMAR.newLexer(CharStreams.fromString(query), isDevVersion);
         lexer.removeErrorListeners();
         lexer.addErrorListener(collector);
-        lexer.setEsqlConfig(config);
 
-        EsqlBaseParser parser = new EsqlBaseParser(new CommonTokenStream(lexer));
+        Parser parser = GRAMMAR.newParser(new CommonTokenStream(lexer), isDevVersion);
         parser.removeErrorListeners();
         parser.addErrorListener(collector);
-        parser.setEsqlConfig(config);
         parser.setBuildParseTree(false);
-        parser.singleStatement();
+        GRAMMAR.singleStatement(parser);
         return errors;
     }
 
@@ -170,8 +174,11 @@ public class EsqlGrammar95Tests {
 
     @Test
     public void testDevOnlySyntaxFollowsSetting() {
-        Assert.assertTrue(EsqlAnnotator.validate("FROM foo | DEDUP", true).isEmpty());
-        Assert.assertFalse(EsqlAnnotator.validate("FROM foo | DEDUP", false).isEmpty());
+        GrammarVersion version = new GrammarVersion("9.5", "9.5", false);
+        Assert.assertTrue(EsqlAnnotator.validate("FROM foo | DEDUP",
+            new Selection(version, true, null)).isEmpty());
+        Assert.assertFalse(EsqlAnnotator.validate("FROM foo | DEDUP",
+            new Selection(version, false, null)).isEmpty());
     }
 
     /**
@@ -199,16 +206,29 @@ public class EsqlGrammar95Tests {
      */
     @Test
     public void testMetadataFieldsUseMetadataSourceRule() {
-        EsqlBaseLexer lexer = new EsqlBaseLexer(CharStreams.fromString("FROM a METADATA _id, _index"));
-        EsqlBaseParser parser = new EsqlBaseParser(new CommonTokenStream(lexer));
+        Lexer lexer = GRAMMAR.newLexer(CharStreams.fromString("FROM a METADATA _id, _index"), true);
+        Parser parser = GRAMMAR.newParser(new CommonTokenStream(lexer), true);
+        int metadataSource = GRAMMAR.ruleIndex("metadataSource");
+        Assert.assertTrue("the grammar has no metadataSource rule", metadataSource >= 0);
 
         List<String> sources = new ArrayList<>();
-        ParseTreeWalker.DEFAULT.walk(new EsqlBaseParserBaseListener() {
+        ParseTreeWalker.DEFAULT.walk(new ParseTreeListener() {
             @Override
-            public void exitMetadataSource(EsqlBaseParser.MetadataSourceContext ctx) {
-                sources.add(ctx.getText());
+            public void visitTerminal(TerminalNode node) {}
+
+            @Override
+            public void visitErrorNode(ErrorNode node) {}
+
+            @Override
+            public void enterEveryRule(ParserRuleContext ctx) {}
+
+            @Override
+            public void exitEveryRule(ParserRuleContext ctx) {
+                if (ctx.getRuleIndex() == metadataSource) {
+                    sources.add(ctx.getText());
+                }
             }
-        }, parser.singleStatement());
+        }, GRAMMAR.singleStatement(parser));
 
         Assert.assertEquals(List.of("_id", "_index"), sources);
     }
