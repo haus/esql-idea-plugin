@@ -23,8 +23,13 @@ import com.intellij.openapi.application.Application;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.project.ProjectManager;
+import org.jetbrains.annotations.TestOnly;
+
+import java.util.concurrent.atomic.AtomicInteger;
 
 public final class EditorRefresh {
+    private static final AtomicInteger RESTARTS = new AtomicInteger();
+
     private EditorRefresh() {}
 
     /**
@@ -37,10 +42,17 @@ public final class EditorRefresh {
             app.invokeLater(EditorRefresh::restartAll);
             return;
         }
+        RESTARTS.incrementAndGet();
         for (Project project : ProjectManager.getInstance().getOpenProjects()) {
             if (!project.isDisposed()) {
                 DaemonCodeAnalyzer.getInstance(project).restart();
             }
         }
+    }
+
+    /** How many times {@link #restartAll()} has run on the event dispatch thread. */
+    @TestOnly
+    public static int restartCount() {
+        return RESTARTS.get();
     }
 }

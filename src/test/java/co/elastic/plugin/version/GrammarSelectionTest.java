@@ -112,4 +112,21 @@ public class GrammarSelectionTest {
             Assert.assertTrue(local.local());
         }
     }
+
+    @Test
+    public void testHandEditedSettingIsNormalised() {
+        EsqlPluginSettings s = new EsqlPluginSettings();
+        ServerInfo server = new ServerInfo("9.2.1", false);
+        s.esqlVersion = "Auto";
+        Assert.assertEquals("9.2", GrammarSelection.resolve(s, server).version().id());
+        s.esqlVersion = " 9.3 ";
+        Selection selection = GrammarSelection.resolve(s, null);
+        Assert.assertEquals("9.3", selection.version().id());
+        Assert.assertNull(selection.note());
+        s.esqlVersion = " ";
+        Assert.assertEquals("9.2", GrammarSelection.resolve(s, server).version().id());
+        s.esqlVersion = "LOCAL";
+        GrammarVersion local = new GrammarVersion("local", "Local build (main @ 0123abcd)", true);
+        Assert.assertEquals(local, GrammarSelection.resolve(s, null, local).version());
+    }
 }

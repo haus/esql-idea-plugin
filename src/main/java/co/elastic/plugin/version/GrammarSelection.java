@@ -24,6 +24,7 @@ import co.elastic.plugin.settings.EsqlPluginSettings;
 import com.intellij.openapi.application.ApplicationManager;
 
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Works out which grammar settings apply right now, from the plugin settings and the active connection.
@@ -56,7 +57,9 @@ public final class GrammarSelection {
     }
 
     static Selection resolve(EsqlPluginSettings settings, ServerInfo detected, GrammarVersion local) {
-        return VersionResolver.resolve(settings.esqlVersion, DevSyntaxMode.fromSetting(settings.devSyntax),
+        // Hand-edited values such as "Auto" or " 9.3 " mean the same as on the settings page
+        String version = settings.esqlVersion == null ? null : settings.esqlVersion.trim().toLowerCase(Locale.ROOT);
+        return VersionResolver.resolve(version, DevSyntaxMode.fromSetting(settings.devSyntax),
             detected, RELEASED, local);
     }
 

@@ -18,6 +18,7 @@
  */
 package co.elastic.plugin.execution;
 
+import co.elastic.plugin.EditorRefresh;
 import co.elastic.plugin.connection.EsqlPluginQueryManager;
 import co.elastic.plugin.connection.EsqlQueryResult;
 import co.elastic.plugin.settings.EsqlConnection;
@@ -80,6 +81,8 @@ public class EsqlResultsPanel extends JPanel {
                 String selected = (String) connectionDropdown.getSelectedItem();
                 if (selected != null) {
                     settings.activeConnectionName = selected;
+                    // The active connection decides the Auto grammar version
+                    EditorRefresh.restartAll();
                     updateConnectionStatus();
                     actionToolbar.updateActionsImmediately();
                     restoreCachedResults();
@@ -243,6 +246,7 @@ public class EsqlResultsPanel extends JPanel {
         if (dialog.showAndGet()) {
             EsqlConnection conn = dialog.getConnection();
             settings.addConnection(conn);
+            EditorRefresh.restartAll();
             refreshDropdown();
             updateConnectionStatus();
         }
@@ -284,6 +288,7 @@ public class EsqlResultsPanel extends JPanel {
             }
             queryManager.clearCachedResults(active);
             settings.removeConnection(active);
+            EditorRefresh.restartAll();
             refreshDropdown();
             restoreCachedResults();
             updateConnectionStatus();
