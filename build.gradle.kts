@@ -70,6 +70,9 @@ intellijPlatform {
         }
         changeNotes = """
           Plugin now compatible with elasticsearch 8.x server instances.
+          Error highlighting no longer accepts dev-only syntax (such as DEDUP) by default. Set
+          Settings | Tools | ES|QL | Dev-only syntax to On to keep it, or leave it on Auto to follow
+          snapshot builds.
         """
     }
 }

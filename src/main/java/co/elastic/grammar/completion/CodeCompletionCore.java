@@ -93,6 +93,12 @@ public class CodeCompletionCore {
     private List<Token> tokens;
     private List<Integer> precedenceStack;
 
+    /**
+     * Follow sets are cached per parser class, and they depend on how the grammar predicates evaluate.
+     * Parsers whose predicates can differ (for example dev-only syntax on or off) must use different values.
+     */
+    public String predicateContext = "";
+
     private int tokenStartIndex = 0;
     private int statesProcessed = 0;
 
@@ -357,7 +363,7 @@ public class CodeCompletionCore {
         Set<Integer> result = new HashSet<>();
 
         Map<Integer, FollowSetsHolder> setsPerState = followSetsByATN.computeIfAbsent(
-            parser.getClass().getName(), k -> new HashMap<>());
+            parser.getClass().getName() + ":" + predicateContext, k -> new HashMap<>());
 
         FollowSetsHolder followSets = setsPerState.get(startState.stateNumber);
         if (followSets == null) {
