@@ -39,8 +39,17 @@ public class GrammarVersionsTest {
 
     @Test
     public void testLocalIsEmptyWithoutLocalGrammar() {
-        Assert.assertEquals(Optional.empty(), GrammarVersions.local());
-        Assert.assertEquals(Optional.empty(), GrammarVersions.localLabel());
+        GrammarVersions.Listing listing = GrammarVersions.parse(List.of("released 9.5"));
+        Assert.assertEquals(Optional.empty(), listing.local());
+        Assert.assertEquals(Optional.empty(), listing.localLabel());
+    }
+
+    @Test
+    public void testLocalIdAndLabelAgree() {
+        // holds whether or not this build has an antlr/local/ grammar
+        Assert.assertEquals(GrammarVersions.local().isPresent(), GrammarVersions.localLabel().isPresent());
+        GrammarVersions.local().ifPresent(id -> Assert.assertEquals("local", id));
+        GrammarVersions.localLabel().ifPresent(label -> Assert.assertTrue(label, label.startsWith("Local build (")));
     }
 
     @Test
