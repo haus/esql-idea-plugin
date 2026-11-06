@@ -23,15 +23,12 @@ import org.antlr.v4.runtime.Lexer;
 import org.antlr.v4.runtime.Parser;
 import org.antlr.v4.runtime.ParserRuleContext;
 import org.antlr.v4.runtime.TokenStream;
-import org.antlr.v4.runtime.Vocabulary;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
@@ -46,17 +43,18 @@ public final class EsqlGrammar {
     private static final String GRAMMAR_PACKAGE_PREFIX = "co.elastic.grammar.v";
 
     private static final Map<String, EsqlGrammar> BY_ID = new ConcurrentHashMap<>();
+    private static final Map<String, GrammarTokens> TOKENS_BY_ID = new ConcurrentHashMap<>();
 
     private final String id;
     private final Constructor<? extends Lexer> lexerConstructor;
     private final Constructor<? extends Parser> parserConstructor;
     private final Method singleStatement;
     private final Map<String, Integer> ruleIndexes;
-    private final Set<String> tokenNames;
+    private final GrammarTokens tokens;
 
     private EsqlGrammar(String id, Constructor<? extends Lexer> lexerConstructor,
                         Constructor<? extends Parser> parserConstructor, Method singleStatement,
-                        String[] ruleNames, Set<String> tokenNames) {
+                        String[] ruleNames, GrammarTokens tokens) {
         this.id = id;
         this.lexerConstructor = lexerConstructor;
         this.parserConstructor = parserConstructor;
@@ -66,7 +64,7 @@ public final class EsqlGrammar {
             indexes.put(ruleNames[i], i);
         }
         this.ruleIndexes = Map.copyOf(indexes);
-        this.tokenNames = Set.copyOf(tokenNames);
+        this.tokens = tokens;
     }
 
     /**
@@ -97,6 +95,21 @@ public final class EsqlGrammar {
     }
 
     /**
+     * The token names and literals of a version, read from a resource without loading the version's generated
+     * classes. Falls back to the newest version when this build has no grammar for the id.
+     */
+    public static GrammarTokens tokensOrNewest(String id) {
+        String known = isKnown(id) ? id : GrammarVersions.newest();
+        return TOKENS_BY_ID.computeIfAbsent(known,
+            v -> GrammarTokens.read("/" + packageFor(v).replace('.', '/') + "/tokens.txt"));
+    }
+
+    private static boolean isKnown(String id) {
+        return id != null
+            && (GrammarVersions.released().contains(id) || GrammarVersions.local().filter(id::equals).isPresent());
+    }
+
+    /**
      * The Java package of the generated classes for a version id, for example {@code co.elastic.grammar.v9_5}
      * for "9.5". Keep in sync with {@code grammarPackage} in {@code antlr/build.gradle}.
      */
@@ -105,7 +118,7 @@ public final class EsqlGrammar {
     }
 
     private static EsqlGrammar load(String id) {
-        if (!GrammarVersions.released().contains(id) && GrammarVersions.local().filter(id::equals).isEmpty()) {
+        if (!isKnown(id)) {
             throw new IllegalArgumentException("No ES|QL grammar for version " + id);
         }
         String pkg = packageFor(id);
@@ -117,23 +130,10 @@ public final class EsqlGrammar {
             String[] ruleNames = (String[]) parserClass.getField("ruleNames").get(null);
             return new EsqlGrammar(id, lexerClass.getConstructor(CharStream.class),
                 parserClass.getConstructor(TokenStream.class), parserClass.getMethod("singleStatement"),
-                ruleNames, symbolicNames(parserClass));
+                ruleNames, tokensOrNewest(id));
         } catch (ReflectiveOperationException | ClassCastException e) {
             throw new IllegalArgumentException("No usable ES|QL grammar for version " + id, e);
         }
-    }
-
-    private static Set<String> symbolicNames(Class<? extends Parser> parserClass)
-        throws ReflectiveOperationException {
-        Vocabulary vocabulary = (Vocabulary) parserClass.getField("VOCABULARY").get(null);
-        Set<String> names = new HashSet<>();
-        for (int type = 0; type <= vocabulary.getMaxTokenType(); type++) {
-            String name = vocabulary.getSymbolicName(type);
-            if (name != null) {
-                names.add(name);
-            }
-        }
-        return names;
     }
 
     public String id() {
@@ -175,7 +175,15 @@ public final class EsqlGrammar {
 
     /** Whether this version's grammar has a token with this symbolic name (for example {@code FROM}). */
     public boolean hasToken(String symbolicName) {
-        return symbolicName != null && tokenNames.contains(symbolicName);
+        return tokens.hasToken(symbolicName);
+    }
+
+    /**
+     * The literal text of a token type without quotes, including the literal of dev-only tokens that the
+     * generated vocabulary lacks (for example {@code left} for {@code DEV_JOIN_LEFT}), or null when it has none.
+     */
+    public String literal(int tokenType) {
+        return tokens.literal(tokenType);
     }
 
     private static <T> T newInstance(Constructor<T> constructor, Object arg) {

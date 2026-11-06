@@ -19,6 +19,7 @@
 package co.elastic.plugin.version;
 
 import co.elastic.grammar.EsqlGrammar;
+import co.elastic.grammar.GrammarTokens;
 import co.elastic.grammar.GrammarVersions;
 
 import java.io.BufferedReader;
@@ -87,8 +88,9 @@ public final class VersionData {
         if (functions(id).contains(upper)) {
             return true;
         }
-        EsqlGrammar grammar = EsqlGrammar.forVersionOrNewest(id, null);
-        return grammar.hasToken(upper) || grammar.hasToken(DEV_PREFIX + upper);
+        // reads a resource: must not load the grammar classes of every version
+        GrammarTokens tokens = EsqlGrammar.tokensOrNewest(id);
+        return tokens.hasToken(upper) || tokens.hasToken(DEV_PREFIX + upper);
     }
 
     private static String dataId(String id) {

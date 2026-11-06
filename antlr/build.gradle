@@ -74,6 +74,10 @@ abstract class GenerateGrammar extends DefaultTask {
   @OutputDirectory
   abstract DirectoryProperty getOutputRoot()
 
+  /** Holds the tokens.txt resource, see writeTokens. */
+  @OutputDirectory
+  abstract DirectoryProperty getResourceRoot()
+
   @Inject
   abstract ExecOperations getExecOperations()
 
@@ -88,6 +92,55 @@ abstract class GenerateGrammar extends DefaultTask {
     run(outDir, 'EsqlBaseLexer.g4', 'lexer')
     // the parser finds EsqlBaseLexer.tokens in the output directory
     run(outDir, 'EsqlBaseParser.g4', 'parser')
+    File resourceRoot = resourceRoot.get().asFile
+    fileSystemOperations.delete { it.delete(resourceRoot) }
+    writeTokens(new File(outDir, 'EsqlBaseLexer.tokens'),
+      new File(resourceRoot, packageName.get().replace('.', '/') + '/tokens.txt'))
+  }
+
+  // A lexer rule that is a predicate and then one literal, such as
+  //   DEV_JOIN_LEFT : {this.isDevVersion()}? 'left' -> pushMode(JOIN_MODE);
+  // ANTLR gives such tokens no literal name, so the .tokens file lacks it.
+  private static final java.util.regex.Pattern GATED_LITERAL_RULE = java.util.regex.Pattern.compile(
+    /^\s*([A-Z][A-Z0-9_]*)\s*:\s*\{[^{}]*\}\?\s*('(?:[^'\\]|\\.)*')\s*(?:->[^;]*)?;\s*(?:\/\/.*)?$/)
+
+  /**
+   * Writes the lexer's .tokens file (NAME=type and 'literal'=type lines) as a resource, so token names and
+   * literals can be read without loading the generated classes. Tokens of predicate-gated rules get a
+   * 'literal'=type line taken from the lexer grammar.
+   */
+  private void writeTokens(File tokens, File out) {
+    List<String> lines = tokens.readLines('UTF-8').findAll { !it.isBlank() }
+    Map<String, String> typeByName = [:]
+    Set<String> typesWithLiteral = [] as Set
+    lines.each { line ->
+      int eq = line.lastIndexOf('=')
+      String key = line.substring(0, eq)
+      String type = line.substring(eq + 1)
+      if (key.startsWith("'")) {
+        typesWithLiteral << type
+      } else {
+        typeByName[key] = type
+      }
+    }
+    List<String> extra = []
+    grammarDir.get().asFile.eachFileRecurse(groovy.io.FileType.FILES) { File g4 ->
+      if (!g4.name.endsWith('.g4')) {
+        return
+      }
+      g4.eachLine('UTF-8') { line ->
+        def m = GATED_LITERAL_RULE.matcher(line)
+        if (m.matches()) {
+          String type = typeByName[m.group(1)]
+          if (type != null && !typesWithLiteral.contains(type)) {
+            typesWithLiteral << type
+            extra << "${m.group(2)}=${type}".toString()
+          }
+        }
+      }
+    }
+    out.parentFile.mkdirs()
+    out.setText((lines + extra.sort()).join('\n') + '\n', 'UTF-8')
   }
 
   private void run(File outDir, String grammar, String lib) {
@@ -147,8 +200,10 @@ grammars.each { String id, File dir ->
     toolClasspath.from(configurations.antlrTool)
     packageName = grammarPackage(id)
     outputRoot = layout.buildDirectory.dir("generated-src/antlr/${id}")
+    resourceRoot = layout.buildDirectory.dir("generated-resources/antlr/${id}")
   }
-  sourceSets.main.java.srcDir(generate)
+  sourceSets.main.java.srcDir(generate.flatMap { it.outputRoot })
+  sourceSets.main.resources.srcDir(generate.flatMap { it.resourceRoot })
 }
 
 def writeGrammarVersions = tasks.register('writeGrammarVersions') {
