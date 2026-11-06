@@ -19,6 +19,7 @@
 package co.elastic.plugin.autocomplete;
 
 import co.elastic.grammar.EsqlGrammar;
+import co.elastic.grammar.GrammarVersions;
 import co.elastic.grammar.completion.CodeCompletionCore;
 import co.elastic.grammar.completion.CodeCompletionCore.CandidatesCollection;
 import co.elastic.plugin.connection.EsqlSchemaProvider;
@@ -50,10 +51,11 @@ public record Completion(String text, Kind kind) {
     private static final List<String> PREFERRED_RULES =
         List.of("indexPattern", "fieldName", "fieldNamePattern", "metadataSource", "subquery");
 
-    /** Version 9.5 with dev-only syntax off. Does not need a running IDE. */
+    /** The newest version with dev-only syntax off. Does not need a running IDE. */
     static Set<Completion> computeCompletions(String text, EsqlSchemaProvider queryManager) {
+        String newest = GrammarVersions.newest();
         return computeCompletions(text, queryManager,
-            new Selection(new GrammarVersion("9.5", "9.5", false), false, null));
+            new Selection(new GrammarVersion(newest, newest, false), false, null));
     }
 
     static Set<Completion> computeCompletions(String text, EsqlSchemaProvider queryManager,

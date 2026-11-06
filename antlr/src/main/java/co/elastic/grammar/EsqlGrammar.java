@@ -39,8 +39,8 @@ import java.util.function.Consumer;
  */
 public final class EsqlGrammar {
 
-    /** Package that holds the generated grammar classes. */
-    private static final String GRAMMAR_PACKAGE = "co.elastic.grammar";
+    /** Prefix of the per-version packages that hold the generated grammar classes. */
+    private static final String GRAMMAR_PACKAGE_PREFIX = "co.elastic.grammar.v";
 
     private static final Map<String, EsqlGrammar> BY_ID = new ConcurrentHashMap<>();
 
@@ -92,15 +92,15 @@ public final class EsqlGrammar {
     }
 
     /**
-     * The Java package of the generated classes for a version id.
+     * The Java package of the generated classes for a version id, for example {@code co.elastic.grammar.v9_5}
+     * for "9.5". Keep in sync with {@code grammarPackage} in {@code antlr/build.gradle}.
      */
     private static String packageFor(String id) {
-        // Only one grammar is generated so far, in the base package. Per-version packages come later.
-        return GRAMMAR_PACKAGE;
+        return GRAMMAR_PACKAGE_PREFIX + id.replace('.', '_');
     }
 
     private static EsqlGrammar load(String id) {
-        if (!GrammarVersions.released().contains(id)) {
+        if (!GrammarVersions.released().contains(id) && GrammarVersions.local().filter(id::equals).isEmpty()) {
             throw new IllegalArgumentException("No ES|QL grammar for version " + id);
         }
         String pkg = packageFor(id);

@@ -18,6 +18,7 @@
  */
 package co.elastic.plugin.version;
 
+import co.elastic.grammar.GrammarVersions;
 import co.elastic.plugin.connection.EsqlPluginQueryManager;
 import co.elastic.plugin.settings.EsqlPluginSettings;
 import com.intellij.openapi.application.ApplicationManager;
@@ -28,8 +29,9 @@ import java.util.List;
  * Works out which grammar settings apply right now, from the plugin settings and the active connection.
  */
 public final class GrammarSelection {
-    // Until a grammar registry exists, 9.5 is the only released grammar and there is no local build.
-    private static final List<GrammarVersion> RELEASED = List.of(new GrammarVersion("9.5", "9.5", false));
+    private static final List<GrammarVersion> RELEASED = GrammarVersions.released().stream()
+        .map(id -> new GrammarVersion(id, id, false))
+        .toList();
 
     private GrammarSelection() {}
 

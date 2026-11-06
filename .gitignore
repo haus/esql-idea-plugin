@@ -43,3 +43,6 @@ bin/
 
 ### Kotlin
 .kotlin/
+
+### Local ES|QL grammar (see antlr/build.gradle)
+antlr/local/

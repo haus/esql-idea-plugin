@@ -5,6 +5,8 @@
  * 2.0.
  */
 
+import javax.inject.Inject
+
 plugins {
   id 'java'
 }
@@ -17,13 +19,13 @@ repositories {
 }
 
 configurations {
-  regenerate
+  antlrTool
 }
 
 dependencies {
   implementation("org.antlr:antlr4:4.13.1")
   testImplementation("junit:junit:4.13.2")
-  regenerate "org.antlr:antlr4:4.13.1"
+  antlrTool "org.antlr:antlr4:4.13.1"
 }
 
 java {
@@ -31,114 +33,135 @@ java {
     sourceCompatibility = JavaVersion.VERSION_21
 }
 
-// All config below copied verbatim from https://github.com/elastic/elasticsearch/tree/main/x-pack/plugin/esql
-
 /**********************************************
- *          ESQL Parser regeneration           *
+ *         ES|QL parser generation             *
  **********************************************/
 
+// One grammar per released version under grammars/<id>/, plus an optional, untracked local/ grammar with the
+// id "local". Each has EsqlBaseLexer.g4 and EsqlBaseParser.g4 at the top, imported grammars under lexer/ and
+// parser/, and a source.txt with "ref:" and "commit:" lines.
 
-String grammarPath = 'src/main/antlr'
-String outputPath = 'src/main/java/co/elastic/grammar'
-
-// Set the JVM compatibility versions
-tasks.withType(JavaCompile) {
+// Keep in sync with EsqlGrammar.packageFor.
+static String grammarPackage(String id) {
+  return 'co.elastic.grammar.v' + id.replace('.', '_')
 }
 
-
-tasks.register("cleanGenerated", Delete) {
-  delete fileTree(grammarPath) {
-    include '*.tokens'
+static Map<String, String> readSource(File dir) {
+  Map<String, String> values = [:]
+  File source = new File(dir, 'source.txt')
+  if (source.isFile()) {
+    source.eachLine('UTF-8') { line ->
+      int colon = line.indexOf(':')
+      if (colon > 0) {
+        values[line.substring(0, colon).trim()] = line.substring(colon + 1).trim()
+      }
+    }
   }
-  delete fileTree(outputPath) {
-    include 'EsqlBase*.java'
+  return values
+}
+
+/** Runs the ANTLR tool on one grammar directory: the lexer first, then the parser that reads its tokens. */
+abstract class GenerateGrammar extends DefaultTask {
+  @InputDirectory
+  abstract DirectoryProperty getGrammarDir()
+
+  @Classpath
+  abstract ConfigurableFileCollection getToolClasspath()
+
+  @Input
+  abstract Property<String> getPackageName()
+
+  @OutputDirectory
+  abstract DirectoryProperty getOutputRoot()
+
+  @Inject
+  abstract ExecOperations getExecOperations()
+
+  @Inject
+  abstract FileSystemOperations getFileSystemOperations()
+
+  @TaskAction
+  void generate() {
+    File outRoot = outputRoot.get().asFile
+    fileSystemOperations.delete { it.delete(outRoot) }
+    File outDir = new File(outRoot, packageName.get().replace('.', '/'))
+    run(outDir, 'EsqlBaseLexer.g4', 'lexer')
+    // the parser finds EsqlBaseLexer.tokens in the output directory
+    run(outDir, 'EsqlBaseParser.g4', 'parser')
+  }
+
+  private void run(File outDir, String grammar, String lib) {
+    File dir = grammarDir.get().asFile
+    execOperations.javaexec {
+      it.mainClass.set('org.antlr.v4.Tool')
+      it.classpath = toolClasspath
+      it.systemProperty 'file.encoding', 'UTF-8'
+      it.systemProperty 'user.language', 'en'
+      it.systemProperty 'user.country', 'US'
+      it.systemProperty 'user.variant', ''
+      it.args '-Werror',
+        '-package', packageName.get(),
+        '-listener',
+        '-visitor',
+        '-lib', new File(dir, lib).absolutePath,
+        '-o', outDir.absolutePath,
+        new File(dir, grammar).absolutePath
+    }
   }
 }
 
-tasks.register("regenLexer", JavaExec) {
-  dependsOn "cleanGenerated"
-  mainClass = 'org.antlr.v4.Tool'
-  classpath = configurations.regenerate
-  systemProperty 'file.encoding', 'UTF-8'
-  systemProperty 'user.language', 'en'
-  systemProperty 'user.country', 'US'
-  systemProperty 'user.variant', ''
-  args '-Werror',
-    '-package', 'co.elastic.grammar',
-    '-listener',
-    '-visitor',
-    '-lib', "${file(grammarPath)}/lexer",
-    '-o', outputPath,
-    "${file(grammarPath)}/EsqlBaseLexer.g4"
+List<File> releasedDirs = (file('grammars').listFiles() ?: new File[0]).findAll { it.isDirectory() }
+releasedDirs.each { dir ->
+  if (!(dir.name ==~ /\d+\.\d+/)) {
+    throw new GradleException("Grammar directory name must be a version like 9.5: ${dir}")
+  }
+}
+if (releasedDirs.isEmpty()) {
+  throw new GradleException("No grammars found under ${file('grammars')}")
+}
+releasedDirs.sort { a, b ->
+  def (aMajor, aMinor) = a.name.tokenize('.')*.toInteger()
+  def (bMajor, bMinor) = b.name.tokenize('.')*.toInteger()
+  aMajor <=> bMajor ?: aMinor <=> bMinor
 }
 
-tasks.register("regenParser", JavaExec) {
-  dependsOn "cleanGenerated"
-  dependsOn "regenLexer"
-  mainClass = 'org.antlr.v4.Tool'
-  classpath = configurations.regenerate
-  systemProperty 'file.encoding', 'UTF-8'
-  systemProperty 'user.language', 'en'
-  systemProperty 'user.country', 'US'
-  systemProperty 'user.variant', ''
-  args '-Werror',
-    '-package', 'co.elastic.grammar',
-    '-listener',
-    '-visitor',
-    '-lib', outputPath,
-    '-lib', "${file(grammarPath)}/parser",
-    '-o', outputPath,
-    "${file(grammarPath)}/EsqlBaseParser.g4"
+Map<String, File> grammars = [:]
+releasedDirs.each { grammars[it.name] = it }
+List<String> versionLines = releasedDirs.collect { "released ${it.name}".toString() }
+
+File localDir = file('local')
+if (localDir.isDirectory()) {
+  Map<String, String> source = readSource(localDir)
+  if (!source.ref || !source.commit) {
+    throw new GradleException("${localDir}/source.txt must have ref: and commit: lines")
+  }
+  grammars['local'] = localDir
+  versionLines << "local ${source.ref} ${source.commit}".toString()
 }
 
-tasks.register("regen") {
-  dependsOn "regenParser"
+grammars.each { String id, File dir ->
+  def generate = tasks.register("generateGrammar_${id.replace('.', '_')}", GenerateGrammar) {
+    group = 'antlr'
+    description = "Generates the ES|QL ${id} lexer and parser."
+    grammarDir = dir
+    toolClasspath.from(configurations.antlrTool)
+    packageName = grammarPackage(id)
+    outputRoot = layout.buildDirectory.dir("generated-src/antlr/${id}")
+  }
+  sourceSets.main.java.srcDir(generate)
+}
+
+def writeGrammarVersions = tasks.register('writeGrammarVersions') {
+  group = 'antlr'
+  description = 'Writes the list of generated grammar versions.'
+  def outRoot = layout.buildDirectory.dir('generated-resources/grammar')
+  inputs.property('lines', versionLines)
+  outputs.dir(outRoot)
   doLast {
-    // moves token files to grammar directory for use with IDE's
-    ant.move(file: "${outputPath}/EsqlBaseLexer.tokens", toDir: grammarPath)
-    ant.move(file: "${outputPath}/EsqlBaseParser.tokens", toDir: grammarPath)
-    // make the generated classes package private
-    ant.replaceregexp(
-      match: 'public ((interface|class) \\QEsqlBase(Parser|Lexer)\\E\\w+)',
-      replace: '\\1',
-      encoding: 'UTF-8'
-    ) {
-      fileset(dir: outputPath, includes: 'EsqlBase*.java')
-    }
-    // nuke timestamps/filenames in generated files
-    ant.replaceregexp(
-      match: '\\Q// Generated from \\E.*',
-      replace: '\\/\\/ ANTLR GENERATED CODE: DO NOT EDIT',
-      encoding: 'UTF-8'
-    ) {
-      fileset(dir: outputPath, includes: 'EsqlBase*.java')
-    }
-    // remove tabs in antlr generated files
-    ant.replaceregexp(match: '\t', flags: 'g', replace: '  ', encoding: 'UTF-8') {
-      fileset(dir: outputPath, includes: 'EsqlBase*.java')
-    }
-    // suppress this-escape warnings on EsqlBaseLexer
-    ant.replaceregexp(
-      match: 'public EsqlBaseLexer',
-      replace: '@SuppressWarnings("this-escape")${line.separator}  public EsqlBaseLexer',
-      encoding: 'UTF-8'
-    ) {
-      fileset(dir: outputPath, includes: 'EsqlBaseLexer.java')
-    }
-    // suppress this-escape warnings on all internal EsqlBaseParser class constructores
-    ant.replaceregexp(
-      match: '([ ]+)public ([A-Z][a-z]+[a-z,A-Z]+\\()',
-      flags: 'g',
-      replace: '\\1@SuppressWarnings("this-escape")${line.separator}\\1public \\2',
-      encoding: 'UTF-8'
-    ) {
-      fileset(dir: outputPath, includes: 'EsqlBaseParser.java')
-    }
-    // fix line endings
-    ant.fixcrlf(srcdir: outputPath, eol: 'lf') {
-      patternset(includes: 'EsqlBase*.java')
-    }
+    File out = outRoot.get().file('co/elastic/grammar/versions.txt').asFile
+    out.parentFile.mkdirs()
+    out.setText(versionLines.join('\n') + '\n', 'UTF-8')
   }
 }
 
-
+sourceSets.main.resources.srcDir(writeGrammarVersions)
